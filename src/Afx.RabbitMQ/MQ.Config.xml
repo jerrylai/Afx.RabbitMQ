@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<xml>
+    <Exchange>
+        <Key exchange="afx.test" type="topic" durable="true" autoDelete="false" >
+            <Arguments key="1" value="1" />
+        </Key>
+    </Exchange>
+    <Queue>
+        <Key queue="afx.test.webapi" routingKey="afx.test.webapi"
+             durable="true" exclusive="false"  autoDelete="false" exchange="afx.test"
+             isQueueParam="true" >
+            <QueueArguments key="1" value="1" />
+            <BindArguments key="1" value="1" />
+        </Key>
+    </Queue>
+    <PubMsg>
+        <Key name="TestDto" routingKey="afx.test.webapi" exchange="afx.test" isRoutingKeyParam="false" />
+    </PubMsg>
+    <SubMsg>
+        <Key name="TestDto" queue="afx.test.webapi" isQueueParam="false" />
+    </SubMsg>
+</xml>
