@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Text;
 #if NETCOREAPP || NETSTANDARD
 using System.Text.Json;
+#else
+using Newtonsoft.Json;
 #endif
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -16,10 +18,20 @@ namespace Afx.RabbitMQ
     public class MQPool : IMQPool
     {
 #if NETCOREAPP || NETSTANDARD
-        private static readonly JsonSerializerOptions jsonSerializerOptions = new JsonSerializerOptions()
+        private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions()
         {
             IgnoreNullValues = true,
-            WriteIndented = true
+            WriteIndented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All),
+            PropertyNameCaseInsensitive = false,
+            PropertyNamingPolicy = null,
+            DictionaryKeyPolicy = null
+        };
+#else
+        private static readonly JsonSerializerSettings jsonOptions = new JsonSerializerSettings()
+        {
+            NullValueHandling = NullValueHandling.Ignore,
+            MissingMemberHandling = Newtonsoft.Json.MissingMemberHandling.Ignore
         };
 #endif
 
@@ -287,9 +299,9 @@ namespace Afx.RabbitMQ
             {
                 func = (o) => {
 #if NETCOREAPP || NETSTANDARD
-                    var json = JsonSerializer.Serialize(o, jsonSerializerOptions);
+                    var json = JsonSerializer.Serialize(o, jsonOptions);
 #else
-                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(o);
+                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(o, jsonOptions);
 #endif
                     return Encoding.UTF8.GetBytes(json);
                 };
@@ -572,9 +584,9 @@ namespace Afx.RabbitMQ
                 {
                     var json = Encoding.UTF8.GetString(o.ToArray());
 #if NETCOREAPP || NETSTANDARD
-                    return JsonSerializer.Deserialize<T>(json, jsonSerializerOptions);
+                    return JsonSerializer.Deserialize<T>(json, jsonOptions);
 #else
-                    return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json);
+                    return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, jsonOptions);
 #endif
                 };
             }
