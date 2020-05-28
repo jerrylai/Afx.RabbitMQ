@@ -94,7 +94,7 @@ namespace Afx.RabbitMQ
         private readonly int maxPool = 5;
         private ConcurrentQueue<IModel> m_publishChannelQueue = new ConcurrentQueue<IModel>();
 
-        private const string delay_queue = "delay.queue";
+        private const string DELAY_QUEUE = "delay.queue";
         private object delayQueueObj = new object();
         private ConcurrentDictionary<string, string> delayQueueDic = new ConcurrentDictionary<string, string>();
 
@@ -328,20 +328,20 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
-            bool result = false;
+            bool result = true;
             string contentType = null;
             Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             var body = func(msg);
             using (var ph = GetPublishChannel())
             {
-                ph.Channel.ConfirmSelect();
+                //ph.Channel.ConfirmSelect();
                 IBasicProperties props = ph.Channel.CreateBasicProperties();
                 props.Persistent = persistent;
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire?.TotalMilliseconds.ToString();
                 ph.Channel.BasicPublish(exchange, routingKey, props, body);
-                result = ph.Channel.WaitForConfirms();
+                //result = ph.Channel.WaitForConfirms();
             }
             return result;
         }
@@ -379,12 +379,12 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
-            bool result = false;
+            bool result = true;
             string contentType = null;
             Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             using (var ph = GetPublishChannel())
             {
-                ph.Channel.ConfirmSelect();
+                //ph.Channel.ConfirmSelect();
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
@@ -398,7 +398,7 @@ namespace Afx.RabbitMQ
                     ps.Add(exchange, routingKey, true, props, body);
                 }
                 ps.Publish();
-                result = ph.Channel.WaitForConfirms();
+               // result = ph.Channel.WaitForConfirms();
             }
             return result;
         }
@@ -435,40 +435,40 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
-            bool result = false;
+            bool result = true;
             string contentType = null;
             Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             var body = func(msg);
             using (var ph = GetPublishChannel())
             {
                 string key = null;
-                if (!delayQueueDic.TryGetValue(exchange, out key))
+                if (!delayQueueDic.TryGetValue(routingKey, out key))
                 {
                     lock (delayQueueObj)
                     {
-                        if (!delayQueueDic.TryGetValue(exchange, out key))
+                        if (!delayQueueDic.TryGetValue(routingKey, out key))
                         {
                             key = Guid.NewGuid().ToString("n");
                             Dictionary<string, object> dic = new Dictionary<string, object>(2);
                             dic.Add("x-dead-letter-exchange", exchange);
                             dic.Add("x-dead-letter-routing-key", routingKey);
-                            var queue = $"{delay_queue}.{key}";
+                            var queue = $"{DELAY_QUEUE}.{key}";
                             ph.Channel.QueueDeclare(queue, true, true, false, dic);
                             ph.Channel.QueueBind(queue, exchange, queue, null);
-                            delayQueueDic.TryAdd(exchange, key);
+                            delayQueueDic.TryAdd(routingKey, key);
                         }
                     }
                 }
 
-                ph.Channel.ConfirmSelect();
+                //ph.Channel.ConfirmSelect();
                 IBasicProperties props = ph.Channel.CreateBasicProperties();
                 props.Persistent = persistent;
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 props.Expiration = delay.TotalMilliseconds.ToString();
 
-                ph.Channel.BasicPublish(exchange, $"{delay_queue}.{key}", props, body);
-                result = ph.Channel.WaitForConfirms();
+                ph.Channel.BasicPublish(exchange, $"{DELAY_QUEUE}.{key}", props, body);
+                //result = ph.Channel.WaitForConfirms();
             }
             return result;
         }
@@ -506,31 +506,31 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
-            bool result = false;
+            bool result = true;
             string contentType = null;
             Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             using (var ph = GetPublishChannel())
             {
                 string key = null;
-                if (!delayQueueDic.TryGetValue(exchange, out key))
+                if (!delayQueueDic.TryGetValue(routingKey, out key))
                 {
                     lock (delayQueueObj)
                     {
-                        if (!delayQueueDic.TryGetValue(exchange, out key))
+                        if (!delayQueueDic.TryGetValue(routingKey, out key))
                         {
                             key = Guid.NewGuid().ToString("n");
                             Dictionary<string, object> dic = new Dictionary<string, object>(2);
                             dic.Add("x-dead-letter-exchange", exchange);
                             dic.Add("x-dead-letter-routing-key", routingKey);
-                            var queue = $"{delay_queue}.{key}";
+                            var queue = $"{DELAY_QUEUE}.{key}";
                             ph.Channel.QueueDeclare(queue, true, true, false, dic);
                             ph.Channel.QueueBind(queue, exchange, queue, dic);
-                            delayQueueDic.TryAdd(exchange, key);
+                            delayQueueDic.TryAdd(routingKey, key);
                         }
                     }
                 }
 
-                ph.Channel.ConfirmSelect();
+                //ph.Channel.ConfirmSelect();
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
@@ -541,10 +541,10 @@ namespace Afx.RabbitMQ
                     props.ContentEncoding = "utf-8";
                     props.Expiration = delay.TotalMilliseconds.ToString();
 
-                    ps.Add(exchange, $"{delay_queue}.{key}", true, props, body);
+                    ps.Add(exchange, $"{DELAY_QUEUE}.{key}", true, props, body);
                 }
                 ps.Publish();
-                result = ph.Channel.WaitForConfirms();
+                //result = ph.Channel.WaitForConfirms();
             }
             return result;
         }
