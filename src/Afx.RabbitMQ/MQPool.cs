@@ -339,7 +339,7 @@ namespace Afx.RabbitMQ
                 props.Persistent = persistent;
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
-                if (expire.HasValue) props.Expiration = expire?.TotalMilliseconds.ToString();
+                if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
                 ph.Channel.BasicPublish(exchange, routingKey, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
@@ -393,9 +393,9 @@ namespace Afx.RabbitMQ
                     props.Persistent = persistent;
                     props.ContentType = contentType;
                     props.ContentEncoding = "utf-8";
-                    if (expire.HasValue) props.Expiration = expire?.TotalMilliseconds.ToString();
+                    if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, routingKey, true, props, body);
+                    ps.Add(exchange, routingKey, true, props, new ReadOnlyMemory<byte>(body));
                 }
                 ps.Publish();
                // result = ph.Channel.WaitForConfirms();
@@ -442,11 +442,12 @@ namespace Afx.RabbitMQ
             using (var ph = GetPublishChannel())
             {
                 string key = null;
-                if (!delayQueueDic.TryGetValue(routingKey, out key))
+                var kv = $"{exchange}|{routingKey}";
+                if (!delayQueueDic.TryGetValue(kv, out key))
                 {
                     lock (delayQueueObj)
                     {
-                        if (!delayQueueDic.TryGetValue(routingKey, out key))
+                        if (!delayQueueDic.TryGetValue(kv, out key))
                         {
                             key = Guid.NewGuid().ToString("n");
                             Dictionary<string, object> dic = new Dictionary<string, object>(2);
@@ -455,7 +456,7 @@ namespace Afx.RabbitMQ
                             var queue = $"{DELAY_QUEUE}.{key}";
                             ph.Channel.QueueDeclare(queue, true, true, false, dic);
                             ph.Channel.QueueBind(queue, exchange, queue, null);
-                            delayQueueDic.TryAdd(routingKey, key);
+                            delayQueueDic.TryAdd(kv, key);
                         }
                     }
                 }
@@ -465,7 +466,7 @@ namespace Afx.RabbitMQ
                 props.Persistent = persistent;
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
-                props.Expiration = delay.TotalMilliseconds.ToString();
+                props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
                 ph.Channel.BasicPublish(exchange, $"{DELAY_QUEUE}.{key}", props, body);
                 //result = ph.Channel.WaitForConfirms();
@@ -512,11 +513,12 @@ namespace Afx.RabbitMQ
             using (var ph = GetPublishChannel())
             {
                 string key = null;
-                if (!delayQueueDic.TryGetValue(routingKey, out key))
+                var kv = $"{exchange}|{routingKey}";
+                if (!delayQueueDic.TryGetValue(kv, out key))
                 {
                     lock (delayQueueObj)
                     {
-                        if (!delayQueueDic.TryGetValue(routingKey, out key))
+                        if (!delayQueueDic.TryGetValue(kv, out key))
                         {
                             key = Guid.NewGuid().ToString("n");
                             Dictionary<string, object> dic = new Dictionary<string, object>(2);
@@ -525,7 +527,7 @@ namespace Afx.RabbitMQ
                             var queue = $"{DELAY_QUEUE}.{key}";
                             ph.Channel.QueueDeclare(queue, true, true, false, dic);
                             ph.Channel.QueueBind(queue, exchange, queue, dic);
-                            delayQueueDic.TryAdd(routingKey, key);
+                            delayQueueDic.TryAdd(kv, key);
                         }
                     }
                 }
@@ -539,9 +541,9 @@ namespace Afx.RabbitMQ
                     props.Persistent = persistent;
                     props.ContentType = contentType;
                     props.ContentEncoding = "utf-8";
-                    props.Expiration = delay.TotalMilliseconds.ToString();
+                    props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, $"{DELAY_QUEUE}.{key}", true, props, body);
+                    ps.Add(exchange, $"{DELAY_QUEUE}.{key}", true, props, new ReadOnlyMemory<byte>(body));
                 }
                 ps.Publish();
                 //result = ph.Channel.WaitForConfirms();
