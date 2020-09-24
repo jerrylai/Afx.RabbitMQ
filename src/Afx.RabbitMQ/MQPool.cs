@@ -18,15 +18,24 @@ namespace Afx.RabbitMQ
     public class MQPool : IMQPool
     {
 #if NETCOREAPP || NETSTANDARD
-        private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions()
+        private static readonly JsonSerializerOptions jsonOptions;
+        static MQPool()
         {
-            IgnoreNullValues = true,
-            WriteIndented = true,
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All),
-            PropertyNameCaseInsensitive = false,
-            PropertyNamingPolicy = null,
-            DictionaryKeyPolicy = null
-        };
+            jsonOptions = new JsonSerializerOptions()
+            {
+                IgnoreNullValues = true,
+                WriteIndented = false,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                PropertyNameCaseInsensitive = false,
+                PropertyNamingPolicy = null,
+                DictionaryKeyPolicy = null
+            };
+            jsonOptions.Converters.Add(new IntJsonConverter());
+            jsonOptions.Converters.Add(new LongJsonConverter());
+            jsonOptions.Converters.Add(new FloatJsonConverter());
+            jsonOptions.Converters.Add(new DoubleJsonConverter());
+            jsonOptions.Converters.Add(new DecimalJsonConverter());
+        }
 #else
         private static readonly JsonSerializerSettings jsonOptions = new JsonSerializerSettings()
         {
@@ -94,14 +103,14 @@ namespace Afx.RabbitMQ
         private readonly int maxPool = 5;
         private ConcurrentQueue<IModel> m_publishChannelQueue = new ConcurrentQueue<IModel>();
 
-        private const string DELAY_QUEUE = "delay.queue";
+        private const string DELAY_QUEUE = "delay";
         private object delayQueueObj = new object();
         private ConcurrentDictionary<string, string> delayQueueDic = new ConcurrentDictionary<string, string>();
 
         /// <summary>
         /// 异常回调
         /// </summary>
-        public Action<Exception, IDictionary<string, object>> CallbackException;
+        public Action<Exception, IDictionary<string, object>, string> CallbackException;
 
         /// <summary>
         /// mq应用池
@@ -152,7 +161,7 @@ namespace Afx.RabbitMQ
         private void conCallbackException(object sender, CallbackExceptionEventArgs e)
         {
             if (CallbackException != null)
-                CallbackException(e.Exception, e.Detail);
+                CallbackException(e.Exception, e.Detail, string.Empty);
         }
 
         private IModel GetSubscribeChannel()
@@ -585,11 +594,21 @@ namespace Afx.RabbitMQ
                 func = (o) =>
                 {
                     var json = Encoding.UTF8.GetString(o.ToArray());
+                    try
+                    {
 #if NETCOREAPP || NETSTANDARD
-                    return JsonSerializer.Deserialize<T>(json, jsonOptions);
+                        return JsonSerializer.Deserialize<T>(json, jsonOptions);
 #else
-                    return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, jsonOptions);
+                        return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, jsonOptions);
 #endif
+                    }
+                    catch(Exception ex)
+                    {
+                        if (this.CallbackException != null)
+                            this.CallbackException?.Invoke(ex, null, $"{typeof(T).FullName}, json: {json}");
+
+                        throw ex;
+                    }
                 };
             }
 
@@ -629,7 +648,7 @@ namespace Afx.RabbitMQ
                     }
                     catch (Exception ex)
                     {
-                        try { this.CallbackException?.Invoke(ex, null); }
+                        try { this.CallbackException?.Invoke(ex, null, string.Empty); }
                         catch { }
                     }
 
@@ -681,4 +700,113 @@ namespace Afx.RabbitMQ
             }
         }
     }
+
+#if NETCOREAPP || NETSTANDARD
+    #region json
+    class IntJsonConverter : System.Text.Json.Serialization.JsonConverter<int>
+    {
+
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                int v = 0;
+                if (int.TryParse(reader.GetString(), out v))
+                    return v;
+            }
+
+            return reader.GetInt32();
+        }
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(value);
+        }
+    }
+
+    class LongJsonConverter : System.Text.Json.Serialization.JsonConverter<long>
+    {
+
+        public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                long v = 0;
+                if (long.TryParse(reader.GetString(), out v))
+                    return v;
+            }
+
+            return reader.GetInt64();
+        }
+
+        public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(value);
+        }
+    }
+
+    class FloatJsonConverter : System.Text.Json.Serialization.JsonConverter<float>
+    {
+
+        public override float Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                float v = 0;
+                if (float.TryParse(reader.GetString(), out v))
+                    return v;
+            }
+
+            return reader.GetSingle();
+        }
+
+        public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(value);
+        }
+    }
+
+    class DoubleJsonConverter : System.Text.Json.Serialization.JsonConverter<double>
+    {
+
+        public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                double v = 0;
+                if (double.TryParse(reader.GetString(), out v))
+                    return v;
+            }
+
+            return reader.GetDouble();
+        }
+
+        public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString());
+        }
+    }
+
+    class DecimalJsonConverter : System.Text.Json.Serialization.JsonConverter<decimal>
+    {
+
+        public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                decimal v = 0;
+                if (decimal.TryParse(reader.GetString(), out v))
+                    return v;
+            }
+
+            return reader.GetDecimal();
+        }
+
+        public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(value);
+        }
+    }
+    #endregion
+#endif
 }
