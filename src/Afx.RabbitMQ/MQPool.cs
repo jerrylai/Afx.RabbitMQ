@@ -450,22 +450,21 @@ namespace Afx.RabbitMQ
             var body = func(msg);
             using (var ph = GetPublishChannel())
             {
-                string key = null;
+                string queue = null;
                 var kv = $"{exchange}|{routingKey}";
-                if (!delayQueueDic.TryGetValue(kv, out key))
+                if (!delayQueueDic.TryGetValue(kv, out queue))
                 {
                     lock (delayQueueObj)
                     {
-                        if (!delayQueueDic.TryGetValue(kv, out key))
+                        if (!delayQueueDic.TryGetValue(kv, out queue))
                         {
-                            key = Guid.NewGuid().ToString("n");
+                            queue = $"{DELAY_QUEUE}.{Guid.NewGuid().ToString("n")}";
                             Dictionary<string, object> dic = new Dictionary<string, object>(2);
                             dic.Add("x-dead-letter-exchange", exchange);
                             dic.Add("x-dead-letter-routing-key", routingKey);
-                            var queue = $"{DELAY_QUEUE}.{key}";
                             ph.Channel.QueueDeclare(queue, true, true, false, dic);
                             ph.Channel.QueueBind(queue, exchange, queue, null);
-                            delayQueueDic.TryAdd(kv, key);
+                            delayQueueDic.TryAdd(kv, queue);
                         }
                     }
                 }
@@ -477,7 +476,7 @@ namespace Afx.RabbitMQ
                 props.ContentEncoding = "utf-8";
                 props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                ph.Channel.BasicPublish(exchange, $"{DELAY_QUEUE}.{key}", props, body);
+                ph.Channel.BasicPublish(exchange, queue, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
             return result;
@@ -521,22 +520,21 @@ namespace Afx.RabbitMQ
             Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             using (var ph = GetPublishChannel())
             {
-                string key = null;
+                string queue = null;
                 var kv = $"{exchange}|{routingKey}";
-                if (!delayQueueDic.TryGetValue(kv, out key))
+                if (!delayQueueDic.TryGetValue(kv, out queue))
                 {
                     lock (delayQueueObj)
                     {
-                        if (!delayQueueDic.TryGetValue(kv, out key))
+                        if (!delayQueueDic.TryGetValue(kv, out queue))
                         {
-                            key = Guid.NewGuid().ToString("n");
+                            queue = $"{DELAY_QUEUE}.{Guid.NewGuid().ToString("n")}";
                             Dictionary<string, object> dic = new Dictionary<string, object>(2);
                             dic.Add("x-dead-letter-exchange", exchange);
                             dic.Add("x-dead-letter-routing-key", routingKey);
-                            var queue = $"{DELAY_QUEUE}.{key}";
                             ph.Channel.QueueDeclare(queue, true, true, false, dic);
                             ph.Channel.QueueBind(queue, exchange, queue, dic);
-                            delayQueueDic.TryAdd(kv, key);
+                            delayQueueDic.TryAdd(kv, queue);
                         }
                     }
                 }
@@ -552,7 +550,7 @@ namespace Afx.RabbitMQ
                     props.ContentEncoding = "utf-8";
                     props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, $"{DELAY_QUEUE}.{key}", true, props, new ReadOnlyMemory<byte>(body));
+                    ps.Add(exchange, queue, true, props, new ReadOnlyMemory<byte>(body));
                 }
                 ps.Publish();
                 //result = ph.Channel.WaitForConfirms();
@@ -605,9 +603,9 @@ namespace Afx.RabbitMQ
                     catch(Exception ex)
                     {
                         if (this.CallbackException != null)
-                            this.CallbackException?.Invoke(ex, null, $"{typeof(T).FullName}, json: {json}");
+                            this.CallbackException.Invoke(ex, null, $"{typeof(T).FullName}, json: {json}");
 
-                        throw ex;
+                        return default(T);
                     }
                 };
             }
@@ -644,7 +642,8 @@ namespace Afx.RabbitMQ
                     try
                     {
                         T m = subInfo.deserializeFunc(e.Body);
-                        handerOk = subInfo.handerFunc(m);
+                        if (m != null) handerOk = subInfo.handerFunc(m);
+                        else handerOk = true;
                     }
                     catch (Exception ex)
                     {
