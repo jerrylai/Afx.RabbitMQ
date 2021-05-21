@@ -2,8 +2,10 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 #if NETCOREAPP || NETSTANDARD
 using System.Text.Json;
+using System.Text.Json.Serialization;
 #else
 using Newtonsoft.Json;
 #endif
@@ -30,6 +32,8 @@ namespace Afx.RabbitMQ
                 PropertyNamingPolicy = null,
                 DictionaryKeyPolicy = null
             };
+            jsonOptions.Converters.Add(new StringJsonConverter());
+            jsonOptions.Converters.Add(new BooleanJsonConverter());
             jsonOptions.Converters.Add(new IntJsonConverter());
             jsonOptions.Converters.Add(new LongJsonConverter());
             jsonOptions.Converters.Add(new FloatJsonConverter());
@@ -43,24 +47,6 @@ namespace Afx.RabbitMQ
             MissingMemberHandling = Newtonsoft.Json.MissingMemberHandling.Ignore
         };
 #endif
-
-        abstract class SubInfoModel
-        {
-            public string queue { get; set; }
-            public abstract Delegate hander { get; }
-            public abstract Type handerParamType { get; }
-            public IModel channel { get; set; }
-            public EventingBasicConsumer consumer { get; set; }
-        }
-
-        class SubInfoModel<T> : SubInfoModel
-        {
-            public override Delegate hander { get { return this.handerFunc; } }
-            public override Type handerParamType { get { return typeof(T); } }
-            public Func<T, bool> handerFunc { get; set; }
-            public Func<ReadOnlyMemory<byte>, T> deserializeFunc { get; set; }
-        }
-
         class PublishChannel : IDisposable
         {
             private MQPool pool;
@@ -75,15 +61,15 @@ namespace Afx.RabbitMQ
 
             public void Dispose()
             {
-                if(this.pool != null)
+                if (this.pool != null)
                 {
-                    if(this.pool.maxPool > this.pool.m_publishChannelQueue.Count && this.Channel.IsOpen)
+                    if (this.pool.maxPool > this.pool.m_publishChannelQueue.Count && this.Channel.IsOpen)
                     {
                         this.pool.m_publishChannelQueue.Enqueue(this.Channel);
                     }
                     else
                     {
-                        if(this.Channel.IsOpen) this.Channel.Close();
+                        if (this.Channel.IsOpen) this.Channel.Close();
                         this.Channel.Dispose();
                     }
                 }
@@ -98,7 +84,7 @@ namespace Afx.RabbitMQ
         private string clientName { get; set; }
 
         private IModel m_subChannel;
-        private ConcurrentDictionary<string, List<SubInfoModel>> subDic = new ConcurrentDictionary<string, List<SubInfoModel>>();
+        private object lockSubChannel = new object();
 
         private readonly int maxPool = 5;
         private ConcurrentQueue<IModel> m_publishChannelQueue = new ConcurrentQueue<IModel>();
@@ -182,7 +168,7 @@ namespace Afx.RabbitMQ
         private PublishChannel GetPublishChannel()
         {
             IModel ch = null;
-            while(this.m_publishChannelQueue.TryDequeue(out ch) && !ch.IsOpen)
+            while (this.m_publishChannelQueue.TryDequeue(out ch) && !ch.IsOpen)
             {
                 ch.Dispose();
                 ch = null;
@@ -213,7 +199,7 @@ namespace Afx.RabbitMQ
             using (var ph = GetPublishChannel())
             {
                 ph.Channel.ExchangeDeclare(exchange, type, durable, autoDelete, arguments);
-             }
+            }
         }
 
         /// <summary>
@@ -289,35 +275,33 @@ namespace Afx.RabbitMQ
         #endregion
 
         #region
-        private Func<object, byte[]> GetSerializeFunc<T>(out string contentType)
+        private byte[] Serialize<T>(T m, out string contentType)
         {
             contentType = null;
-            Func<object, byte[]> func = null;
             var t = typeof(T);
+            byte[] result = null;
             if (t == typeof(byte[]))
             {
-                func = (o) => { return o as byte[]; };
                 contentType = "application/octet-stream";
+                result = m as byte[];
             }
             else if (t == typeof(string))
             {
-                func = (o) => { return Encoding.UTF8.GetBytes(o as string); };
                 contentType = "text/plain";
+                result = Encoding.UTF8.GetBytes(m as string);
             }
             else
             {
-                func = (o) => {
 #if NETCOREAPP || NETSTANDARD
-                    var json = JsonSerializer.Serialize(o, jsonOptions);
+                var json = JsonSerializer.Serialize(m, jsonOptions);
 #else
-                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(o, jsonOptions);
+                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(m, jsonOptions);
 #endif
-                    return Encoding.UTF8.GetBytes(json);
-                };
                 contentType = "application/json";
+                result = Encoding.UTF8.GetBytes(json);
             }
 
-            return func;
+            return result;
         }
 
         /// <summary>
@@ -339,8 +323,7 @@ namespace Afx.RabbitMQ
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             bool result = true;
             string contentType = null;
-            Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
-            var body = func(msg);
+            var body = Serialize<T>(msg, out contentType);
             using (var ph = GetPublishChannel())
             {
                 //ph.Channel.ConfirmSelect();
@@ -390,14 +373,13 @@ namespace Afx.RabbitMQ
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             bool result = true;
             string contentType = null;
-            Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             using (var ph = GetPublishChannel())
             {
                 //ph.Channel.ConfirmSelect();
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
-                    byte[] body = func(m);
+                    var body = Serialize<T>(m, out contentType);
                     IBasicProperties props = ph.Channel.CreateBasicProperties();
                     props.Persistent = persistent;
                     props.ContentType = contentType;
@@ -407,7 +389,7 @@ namespace Afx.RabbitMQ
                     ps.Add(exchange, routingKey, true, props, new ReadOnlyMemory<byte>(body));
                 }
                 ps.Publish();
-               // result = ph.Channel.WaitForConfirms();
+                // result = ph.Channel.WaitForConfirms();
             }
             return result;
         }
@@ -446,8 +428,7 @@ namespace Afx.RabbitMQ
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
             bool result = true;
             string contentType = null;
-            Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
-            var body = func(msg);
+            var body = Serialize(msg, out contentType);
             using (var ph = GetPublishChannel())
             {
                 string queue = null;
@@ -517,7 +498,6 @@ namespace Afx.RabbitMQ
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
             bool result = true;
             string contentType = null;
-            Func<object, byte[]> func = GetSerializeFunc<T>(out contentType);
             using (var ph = GetPublishChannel())
             {
                 string queue = null;
@@ -543,7 +523,7 @@ namespace Afx.RabbitMQ
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
-                    byte[] body = func(m);
+                    byte[] body = Serialize<T>(m, out contentType);
                     IBasicProperties props = ph.Channel.CreateBasicProperties();
                     props.Persistent = persistent;
                     props.ContentType = contentType;
@@ -573,44 +553,39 @@ namespace Afx.RabbitMQ
             return this.PublishDelay(msgs, config.RoutingKey, delay, config.Exchange, persistent);
         }
 
-#endregion
+        #endregion
 
-        private Func<ReadOnlyMemory<byte>, T> GetDeserializeFunc<T>()
+        private T Deserialize<T>(ReadOnlyMemory<byte> buffer)
         {
-            Func<ReadOnlyMemory<byte>, T> func = null;
+            T result = default(T);
             var t = typeof(T);
             if (t == typeof(byte[]))
             {
-                func = (o) => { return (T)((object)o.ToArray()); };
+                result = (T)((object)buffer.ToArray());
             }
             else if (t == typeof(string))
             {
-                func = (o) => { return (T)((object)Encoding.UTF8.GetString(o.ToArray())); };
+                result = (T)((object)Encoding.UTF8.GetString(buffer.ToArray()));
             }
             else
             {
-                func = (o) =>
+                var json = Encoding.UTF8.GetString(buffer.ToArray());
+                try
                 {
-                    var json = Encoding.UTF8.GetString(o.ToArray());
-                    try
-                    {
 #if NETCOREAPP || NETSTANDARD
-                        return JsonSerializer.Deserialize<T>(json, jsonOptions);
+                    result = JsonSerializer.Deserialize<T>(json, jsonOptions);
 #else
-                        return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, jsonOptions);
+                    result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, jsonOptions);
 #endif
-                    }
-                    catch(Exception ex)
-                    {
-                        if (this.CallbackException != null)
-                            this.CallbackException.Invoke(ex, null, $"{typeof(T).FullName}, json: {json}");
-
-                        return default(T);
-                    }
-                };
+                }
+                catch (Exception ex)
+                {
+                    if (this.CallbackException != null)
+                        this.CallbackException.Invoke(ex, null, $"{typeof(T).FullName}, json: {json}");
+                }
             }
 
-            return func;
+            return result;
         }
 
         /// <summary>
@@ -624,25 +599,18 @@ namespace Afx.RabbitMQ
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
             var channel = GetSubscribeChannel();
-            lock (channel)
+            lock (lockSubChannel)
             {
-                var subInfo = new SubInfoModel<T>()
-                {
-                    queue = queue,
-                    channel = channel,
-                    handerFunc = hander,
-                    deserializeFunc = GetDeserializeFunc<T>()
-                };
                 channel.BasicQos(0, 1, false);
-                subInfo.consumer = new EventingBasicConsumer(channel);
-                subInfo.consumer.Received += (o, e) =>
+                var eventingBasicConsumer = new EventingBasicConsumer(channel);
+                eventingBasicConsumer.Received += (o, e) =>
                 {
                     var consumer = o as EventingBasicConsumer;
                     bool handerOk = false;
                     try
                     {
-                        T m = subInfo.deserializeFunc(e.Body);
-                        if (m != null) handerOk = subInfo.handerFunc(m);
+                        T m = Deserialize<T>(e.Body);
+                        if (m != null) handerOk = hander(m);
                         else handerOk = true;
                     }
                     catch (Exception ex)
@@ -660,12 +628,51 @@ namespace Afx.RabbitMQ
                         consumer.Model.BasicReject(e.DeliveryTag, true);
                     }
                 };
-                channel.BasicConsume(queue, false, subInfo.consumer);
-                
-                List<SubInfoModel> subs = null;
-                if (!subDic.TryGetValue(queue, out subs)) subDic.TryAdd(queue, subs = new List<SubInfoModel>(5));
-                subs.Add(subInfo);
-                subs.TrimExcess();
+                channel.BasicConsume(queue, false, eventingBasicConsumer);
+            }
+        }
+
+        /// <summary>
+        /// 消费消息
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="hander"></param>
+        /// <param name="queue"></param>
+        public virtual void AsyncSubscribe<T>(Func<T, Task<bool>> hander, string queue)
+        {
+            if (hander == null) throw new ArgumentNullException(nameof(hander));
+            if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
+            var channel = GetSubscribeChannel();
+            lock (lockSubChannel)
+            {
+                channel.BasicQos(0, 1, false);
+                var eventingBasicConsumer = new AsyncEventingBasicConsumer(channel);
+                eventingBasicConsumer.Received += async (o, e) =>
+                {
+                    var consumer = o as AsyncEventingBasicConsumer;
+                    bool handerOk = false;
+                    try
+                    {
+                        T m = Deserialize<T>(e.Body);
+                        if (m != null) handerOk = await hander(m);
+                        else handerOk = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        try { this.CallbackException?.Invoke(ex, null, string.Empty); }
+                        catch { }
+                    }
+
+                    if (handerOk)
+                    {
+                        consumer.Model.BasicAck(e.DeliveryTag, false);
+                    }
+                    else
+                    {
+                        consumer.Model.BasicReject(e.DeliveryTag, true);
+                    }
+                };
+                channel.BasicConsume(queue, false, eventingBasicConsumer);
             }
         }
 
@@ -689,22 +696,112 @@ namespace Afx.RabbitMQ
                 IModel model;
                 while (this.m_publishChannelQueue.TryDequeue(out model)) model.Dispose();
                 this.m_publishChannelQueue = null;
-                if (this.subDic != null) this.subDic.Clear();
-                this.subDic = null;
                 if (this.m_connection != null) this.m_connection.Dispose();
                 this.m_connection = null;
                 if (this.delayQueueDic != null) this.delayQueueDic.Clear();
                 this.delayQueueDic = null;
                 this.CallbackException = null;
+                this.lockSubChannel = null;
             }
         }
     }
 
 #if NETCOREAPP || NETSTANDARD
     #region json
-    class IntJsonConverter : System.Text.Json.Serialization.JsonConverter<int>
+    /// <summary>
+    /// 
+    /// </summary>
+    public class StringJsonConverter : JsonConverter<string>
     {
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
+        public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                if (reader.TryGetInt32(out var num))
+                    return num.ToString();
+                else if (reader.TryGetDecimal(out var dm))
+                    return dm.ToString();
+            }
+            else if (reader.TokenType == JsonTokenType.False || reader.TokenType == JsonTokenType.True)
+            {
+                return reader.GetBoolean().ToString().ToLower();
+            }
 
+
+            return reader.GetString();
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="writer"></param>
+        /// <param name="value"></param>
+        /// <param name="options"></param>
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value);
+        }
+    }
+    /// <summary>
+    /// 
+    /// </summary>
+    public class BooleanJsonConverter : JsonConverter<bool>
+    {
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
+        public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                if (bool.TryParse(reader.GetInt32().ToString(), out var v))
+                    return v;
+            }
+            else if (reader.TokenType == JsonTokenType.String)
+            {
+                var s = reader.GetString();
+                if (s == "on") return true;
+                else if (s == "off") return false;
+                else if (bool.TryParse(s, out var v))
+                    return v;
+                else return false;
+            }
+
+            return reader.GetBoolean();
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="writer"></param>
+        /// <param name="value"></param>
+        /// <param name="options"></param>
+        public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
+        {
+            writer.WriteBooleanValue(value);
+        }
+    }
+    /// <summary>
+    /// 
+    /// </summary>
+    public class IntJsonConverter : JsonConverter<int>
+    {
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -716,16 +813,29 @@ namespace Afx.RabbitMQ
 
             return reader.GetInt32();
         }
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="writer"></param>
+        /// <param name="value"></param>
+        /// <param name="options"></param>
         public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
         {
             writer.WriteNumberValue(value);
         }
     }
-
-    class LongJsonConverter : System.Text.Json.Serialization.JsonConverter<long>
+    /// <summary>
+    /// 
+    /// </summary>
+    public class LongJsonConverter : JsonConverter<long>
     {
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -737,16 +847,29 @@ namespace Afx.RabbitMQ
 
             return reader.GetInt64();
         }
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="writer"></param>
+        /// <param name="value"></param>
+        /// <param name="options"></param>
         public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options)
         {
             writer.WriteNumberValue(value);
         }
     }
-
-    class FloatJsonConverter : System.Text.Json.Serialization.JsonConverter<float>
+    /// <summary>
+    /// 
+    /// </summary>
+    public class FloatJsonConverter : JsonConverter<float>
     {
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public override float Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -755,19 +878,32 @@ namespace Afx.RabbitMQ
                 if (float.TryParse(reader.GetString(), out v))
                     return v;
             }
-
+            
             return reader.GetSingle();
         }
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="writer"></param>
+        /// <param name="value"></param>
+        /// <param name="options"></param>
         public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options)
         {
             writer.WriteNumberValue(value);
         }
     }
-
-    class DoubleJsonConverter : System.Text.Json.Serialization.JsonConverter<double>
+    /// <summary>
+    /// 
+    /// </summary>
+    public class DoubleJsonConverter : JsonConverter<double>
     {
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -779,16 +915,29 @@ namespace Afx.RabbitMQ
 
             return reader.GetDouble();
         }
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="writer"></param>
+        /// <param name="value"></param>
+        /// <param name="options"></param>
         public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
         {
             writer.WriteStringValue(value.ToString());
         }
     }
-
-    class DecimalJsonConverter : System.Text.Json.Serialization.JsonConverter<decimal>
+    /// <summary>
+    /// 
+    /// </summary>
+    public class DecimalJsonConverter : JsonConverter<decimal>
     {
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="typeToConvert"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -800,7 +949,12 @@ namespace Afx.RabbitMQ
 
             return reader.GetDecimal();
         }
-
+/// <summary>
+/// 
+/// </summary>
+/// <param name="writer"></param>
+/// <param name="value"></param>
+/// <param name="options"></param>
         public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
         {
             writer.WriteNumberValue(value);

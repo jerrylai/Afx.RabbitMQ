@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>Afx.RabbitMQ</id>
-    <version>1.6.3</version>
+    <version>3.0.0</version>
     <authors>jerrylai</authors>
     <owners>jerrylai</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
@@ -12,13 +12,15 @@
     <tags>RabbitMQ</tags>
     <dependencies>
       <group targetFramework=".NETFramework4.6.1">
-        <dependency id="Newtonsoft.Json" version="12.0.3" />
-        <dependency id="RabbitMQ.Client" version="6.0.0" />
-        <dependency id="Microsoft.Diagnostics.Tracing.EventSource.Redist" version="2.2.0" />
+        <dependency id="Newtonsoft.Json" version="13.0.1" />
+        <dependency id="RabbitMQ.Client" version="6.2.1" />
+        <dependency id="Microsoft.Diagnostics.Tracing.EventSource.Redist" version="5.0.0" />
         <dependency id="System.Buffers" version="4.5.1" />
         <dependency id="System.Memory" version="4.5.4" />
         <dependency id="System.Numerics.Vectors" version="4.5.0" />
-        <dependency id="System.Runtime.CompilerServices.Unsafe" version="4.7.1" />
+        <dependency id="System.Runtime.CompilerServices.Unsafe" version="5.0.0" />
+        <dependency id="System.Threading.Channels" version="5.0.0" />
+        <dependency id="System.Threading.Tasks.Extensions" version="4.5.4" />
       </group>
       <group targetFramework=".NETStandard2.0">
         <dependency id="System.Text.Json" version="4.7.2" />
