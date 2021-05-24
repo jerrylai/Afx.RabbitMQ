@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Afx.RabbitMQ
 {
@@ -156,5 +157,13 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         void Subscribe<T>(Func<T, bool> hander, string queue);
+
+        /// <summary>
+        /// 消费消息
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="hander"></param>
+        /// <param name="queue"></param>
+        void AsyncSubscribe<T>(Func<T, Task<bool>> hander, string queue);
     }
 }
