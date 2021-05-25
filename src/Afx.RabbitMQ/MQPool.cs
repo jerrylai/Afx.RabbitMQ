@@ -79,7 +79,7 @@ namespace Afx.RabbitMQ
         }
 
         private object lockCreate = new object();
-        private IConnectionFactory m_connectionFactory;
+        private IAsyncConnectionFactory m_connectionFactory;
         private IConnection m_connection;
         private string clientName { get; set; }
 
@@ -125,6 +125,7 @@ namespace Afx.RabbitMQ
                 UserName = userName,
                 Password = password,
                 VirtualHost = virtualHost,
+                DispatchConsumersAsync = true,
                 AutomaticRecoveryEnabled = true,
                 NetworkRecoveryInterval = TimeSpan.FromSeconds(networkRecoveryInterval)
             };
@@ -594,51 +595,7 @@ namespace Afx.RabbitMQ
         /// <typeparam name="T"></typeparam>
         /// <param name="hander"></param>
         /// <param name="queue"></param>
-        public virtual void Subscribe<T>(Func<T, bool> hander, string queue)
-        {
-            if (hander == null) throw new ArgumentNullException(nameof(hander));
-            if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
-            var channel = GetSubscribeChannel();
-            lock (lockSubChannel)
-            {
-                channel.BasicQos(0, 1, false);
-                var eventingBasicConsumer = new EventingBasicConsumer(channel);
-                eventingBasicConsumer.Received += (o, e) =>
-                {
-                    var consumer = o as EventingBasicConsumer;
-                    bool handerOk = false;
-                    try
-                    {
-                        T m = Deserialize<T>(e.Body);
-                        if (m != null) handerOk = hander(m);
-                        else handerOk = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        try { this.CallbackException?.Invoke(ex, null, string.Empty); }
-                        catch { }
-                    }
-
-                    if (handerOk)
-                    {
-                        consumer.Model.BasicAck(e.DeliveryTag, false);
-                    }
-                    else
-                    {
-                        consumer.Model.BasicReject(e.DeliveryTag, true);
-                    }
-                };
-                channel.BasicConsume(queue, false, eventingBasicConsumer);
-            }
-        }
-
-        /// <summary>
-        /// 消费消息
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="hander"></param>
-        /// <param name="queue"></param>
-        public virtual void AsyncSubscribe<T>(Func<T, Task<bool>> hander, string queue)
+        public virtual void Subscribe<T>(Func<T, Task<bool>> hander, string queue)
         {
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));

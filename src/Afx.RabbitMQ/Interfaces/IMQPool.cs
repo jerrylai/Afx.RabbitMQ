@@ -156,14 +156,6 @@ namespace Afx.RabbitMQ
         /// <typeparam name="T"></typeparam>
         /// <param name="hander"></param>
         /// <param name="queue"></param>
-        void Subscribe<T>(Func<T, bool> hander, string queue);
-
-        /// <summary>
-        /// 消费消息
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="hander"></param>
-        /// <param name="queue"></param>
-        void AsyncSubscribe<T>(Func<T, Task<bool>> hander, string queue);
+        void Subscribe<T>(Func<T, Task<bool>> hander, string queue);
     }
 }
