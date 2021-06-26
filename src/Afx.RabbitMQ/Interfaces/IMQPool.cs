@@ -6,6 +6,14 @@ using System.Threading.Tasks;
 namespace Afx.RabbitMQ
 {
     /// <summary>
+    /// 订阅消息处理
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="m"></param>
+    /// <returns></returns>
+    public delegate Task<bool> SubscribeHander<T>(T m);
+
+    /// <summary>
     /// mq 应用池接口
     /// </summary>
     public interface IMQPool : IDisposable
@@ -156,6 +164,6 @@ namespace Afx.RabbitMQ
         /// <typeparam name="T"></typeparam>
         /// <param name="hander"></param>
         /// <param name="queue"></param>
-        void Subscribe<T>(Func<T, Task<bool>> hander, string queue);
+        void Subscribe<T>(SubscribeHander<T> hander, string queue);
     }
 }

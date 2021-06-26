@@ -276,20 +276,27 @@ namespace Afx.RabbitMQ
         #endregion
 
         #region
-        private byte[] Serialize<T>(T m, out string contentType)
+        private ReadOnlyMemory<byte> Serialize<T>(T m, out string contentType)
         {
             contentType = null;
-            var t = typeof(T);
-            byte[] result = null;
-            if (t == typeof(byte[]))
+            ReadOnlyMemory<byte> result = null;
+            if (m is ReadOnlyMemory<byte>)
             {
                 contentType = "application/octet-stream";
-                result = m as byte[];
+                object o = m;
+                result = (ReadOnlyMemory<byte>)o;
             }
-            else if (t == typeof(string))
+            else if (m is byte[])
+            {
+                contentType = "application/octet-stream";
+                object o = m;
+                result = (o as byte[]);
+            }
+            else if (m is string)
             {
                 contentType = "text/plain";
-                result = Encoding.UTF8.GetBytes(m as string);
+                object o = m;
+                result = Encoding.UTF8.GetBytes(o as string);
             }
             else
             {
@@ -387,7 +394,7 @@ namespace Afx.RabbitMQ
                     props.ContentEncoding = "utf-8";
                     if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, routingKey, true, props, new ReadOnlyMemory<byte>(body));
+                    ps.Add(exchange, routingKey, true, props, body);
                 }
                 ps.Publish();
                 // result = ph.Channel.WaitForConfirms();
@@ -524,14 +531,14 @@ namespace Afx.RabbitMQ
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
-                    byte[] body = Serialize<T>(m, out contentType);
+                    var body = Serialize<T>(m, out contentType);
                     IBasicProperties props = ph.Channel.CreateBasicProperties();
                     props.Persistent = persistent;
                     props.ContentType = contentType;
                     props.ContentEncoding = "utf-8";
                     props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, queue, true, props, new ReadOnlyMemory<byte>(body));
+                    ps.Add(exchange, queue, true, props, body);
                 }
                 ps.Publish();
                 //result = ph.Channel.WaitForConfirms();
@@ -560,13 +567,20 @@ namespace Afx.RabbitMQ
         {
             T result = default(T);
             var t = typeof(T);
-            if (t == typeof(byte[]))
+            if (buffer is  T)
             {
-                result = (T)((object)buffer.ToArray());
+                object o = buffer;
+                result = (T)o;
+            }
+            else if (t == typeof(byte[]))
+            {
+                object o = buffer.ToArray();
+                result = (T)o;
             }
             else if (t == typeof(string))
             {
-                result = (T)((object)Encoding.UTF8.GetString(buffer.ToArray()));
+                object o = Encoding.UTF8.GetString(buffer.ToArray());
+                result = (T)o;
             }
             else
             {
@@ -595,7 +609,7 @@ namespace Afx.RabbitMQ
         /// <typeparam name="T"></typeparam>
         /// <param name="hander"></param>
         /// <param name="queue"></param>
-        public virtual void Subscribe<T>(Func<T, Task<bool>> hander, string queue)
+        public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue)
         {
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
