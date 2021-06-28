@@ -77,6 +77,9 @@
     <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IMQPool.cs">
       <Link>Interfaces\IMQPool.cs</Link>
     </Compile>
+    <Compile Include="..\..\src\Afx.RabbitMQ\JsonUtils.cs">
+      <Link>JsonUtils.cs</Link>
+    </Compile>
     <Compile Include="..\..\src\Afx.RabbitMQ\MQConfig.cs">
       <Link>MQConfig.cs</Link>
     </Compile>

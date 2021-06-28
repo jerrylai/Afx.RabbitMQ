@@ -3,12 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
-#if NETCOREAPP || NETSTANDARD
-using System.Text.Json;
-using System.Text.Json.Serialization;
-#else
-using Newtonsoft.Json;
-#endif
+using Afx.RabbitMQ.Json;
+
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -19,34 +15,6 @@ namespace Afx.RabbitMQ
     /// </summary>
     public class MQPool : IMQPool
     {
-#if NETCOREAPP || NETSTANDARD
-        private static readonly JsonSerializerOptions jsonOptions;
-        static MQPool()
-        {
-            jsonOptions = new JsonSerializerOptions()
-            {
-                IgnoreNullValues = true,
-                WriteIndented = false,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                PropertyNameCaseInsensitive = false,
-                PropertyNamingPolicy = null,
-                DictionaryKeyPolicy = null
-            };
-            jsonOptions.Converters.Add(new StringJsonConverter());
-            jsonOptions.Converters.Add(new BooleanJsonConverter());
-            jsonOptions.Converters.Add(new IntJsonConverter());
-            jsonOptions.Converters.Add(new LongJsonConverter());
-            jsonOptions.Converters.Add(new FloatJsonConverter());
-            jsonOptions.Converters.Add(new DoubleJsonConverter());
-            jsonOptions.Converters.Add(new DecimalJsonConverter());
-        }
-#else
-        private static readonly JsonSerializerSettings jsonOptions = new JsonSerializerSettings()
-        {
-            NullValueHandling = NullValueHandling.Ignore,
-            MissingMemberHandling = Newtonsoft.Json.MissingMemberHandling.Ignore
-        };
-#endif
         class PublishChannel : IDisposable
         {
             private MQPool pool;
@@ -300,11 +268,7 @@ namespace Afx.RabbitMQ
             }
             else
             {
-#if NETCOREAPP || NETSTANDARD
-                var json = JsonSerializer.Serialize(m, jsonOptions);
-#else
-                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(m, jsonOptions);
-#endif
+                var json = JsonUtils.Serialize(m);
                 contentType = "application/json";
                 result = Encoding.UTF8.GetBytes(json);
             }
@@ -587,11 +551,7 @@ namespace Afx.RabbitMQ
                 var json = Encoding.UTF8.GetString(buffer.ToArray());
                 try
                 {
-#if NETCOREAPP || NETSTANDARD
-                    result = JsonSerializer.Deserialize<T>(json, jsonOptions);
-#else
-                    result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, jsonOptions);
-#endif
+                    result = JsonUtils.Deserialize<T>(json);
                 }
                 catch (Exception ex)
                 {
@@ -676,261 +636,4 @@ namespace Afx.RabbitMQ
             }
         }
     }
-
-#if NETCOREAPP || NETSTANDARD
-    #region json
-    /// <summary>
-    /// 
-    /// </summary>
-    public class StringJsonConverter : JsonConverter<string>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                if (reader.TryGetInt32(out var num))
-                    return num.ToString();
-                else if (reader.TryGetDecimal(out var dm))
-                    return dm.ToString();
-            }
-            else if (reader.TokenType == JsonTokenType.False || reader.TokenType == JsonTokenType.True)
-            {
-                return reader.GetBoolean().ToString().ToLower();
-            }
-
-
-            return reader.GetString();
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
-        {
-            writer.WriteStringValue(value);
-        }
-    }
-    /// <summary>
-    /// 
-    /// </summary>
-    public class BooleanJsonConverter : JsonConverter<bool>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                if (bool.TryParse(reader.GetInt32().ToString(), out var v))
-                    return v;
-            }
-            else if (reader.TokenType == JsonTokenType.String)
-            {
-                var s = reader.GetString();
-                if (s == "on") return true;
-                else if (s == "off") return false;
-                else if (bool.TryParse(s, out var v))
-                    return v;
-                else return false;
-            }
-
-            return reader.GetBoolean();
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
-        {
-            writer.WriteBooleanValue(value);
-        }
-    }
-    /// <summary>
-    /// 
-    /// </summary>
-    public class IntJsonConverter : JsonConverter<int>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                int v = 0;
-                if (int.TryParse(reader.GetString(), out v))
-                    return v;
-            }
-
-            return reader.GetInt32();
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
-        {
-            writer.WriteNumberValue(value);
-        }
-    }
-    /// <summary>
-    /// 
-    /// </summary>
-    public class LongJsonConverter : JsonConverter<long>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                long v = 0;
-                if (long.TryParse(reader.GetString(), out v))
-                    return v;
-            }
-
-            return reader.GetInt64();
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options)
-        {
-            writer.WriteNumberValue(value);
-        }
-    }
-    /// <summary>
-    /// 
-    /// </summary>
-    public class FloatJsonConverter : JsonConverter<float>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override float Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                float v = 0;
-                if (float.TryParse(reader.GetString(), out v))
-                    return v;
-            }
-            
-            return reader.GetSingle();
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options)
-        {
-            writer.WriteNumberValue(value);
-        }
-    }
-    /// <summary>
-    /// 
-    /// </summary>
-    public class DoubleJsonConverter : JsonConverter<double>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                double v = 0;
-                if (double.TryParse(reader.GetString(), out v))
-                    return v;
-            }
-
-            return reader.GetDouble();
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
-        {
-            writer.WriteStringValue(value.ToString());
-        }
-    }
-    /// <summary>
-    /// 
-    /// </summary>
-    public class DecimalJsonConverter : JsonConverter<decimal>
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="reader"></param>
-        /// <param name="typeToConvert"></param>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                decimal v = 0;
-                if (decimal.TryParse(reader.GetString(), out v))
-                    return v;
-            }
-
-            return reader.GetDecimal();
-        }
-/// <summary>
-/// 
-/// </summary>
-/// <param name="writer"></param>
-/// <param name="value"></param>
-/// <param name="options"></param>
-        public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
-        {
-            writer.WriteNumberValue(value);
-        }
-    }
-    #endregion
-#endif
 }
