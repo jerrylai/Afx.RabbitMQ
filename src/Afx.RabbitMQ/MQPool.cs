@@ -614,6 +614,8 @@ namespace Afx.RabbitMQ
         {
             this.Dispose(true);
         }
+
+        private object disObj = new object();
         /// <summary>
         /// 
         /// </summary>
@@ -622,20 +624,23 @@ namespace Afx.RabbitMQ
         {
             if (disposing)
             {
-                if (this.m_subChannel != null) this.m_subChannel.Dispose();
-                this.m_subChannel = null;
-                IModel model;
-                while (this.m_publishChannelQueue != null && this.m_publishChannelQueue.TryDequeue(out model))
+                lock (this.disObj)
                 {
-                   if(model != null)  model.Dispose();
+                    if (this.m_subChannel != null) this.m_subChannel.Dispose();
+                    this.m_subChannel = null;
+                    IModel model;
+                    while (this.m_publishChannelQueue != null && this.m_publishChannelQueue.TryDequeue(out model))
+                    {
+                        if (model != null) model.Dispose();
+                    }
+                    this.m_publishChannelQueue = null;
+                    if (this.m_connection != null) this.m_connection.Dispose();
+                    this.m_connection = null;
+                    if (this.delayQueueDic != null) this.delayQueueDic.Clear();
+                    this.delayQueueDic = null;
+                    this.CallbackException = null;
+                    this.lockSubChannel = null;
                 }
-                this.m_publishChannelQueue = null;
-                if (this.m_connection != null) this.m_connection.Dispose();
-                this.m_connection = null;
-                if (this.delayQueueDic != null) this.delayQueueDic.Clear();
-                this.delayQueueDic = null;
-                this.CallbackException = null;
-                this.lockSubChannel = null;
             }
         }
     }
