@@ -62,6 +62,16 @@ namespace Afx.RabbitMQ
         private ConcurrentDictionary<string, string> delayQueueDic = new ConcurrentDictionary<string, string>();
 
         /// <summary>
+        /// Returns true if the connection is still in a state where it can be used. Identical
+        /// to checking if RabbitMQ.Client.IConnection.CloseReason equal null.
+        /// </summary>
+        public bool IsOpen { get { return this.m_connection?.IsOpen ?? false; } }
+        /// <summary>
+        /// The current heartbeat setting for this connection (System.TimeSpan.Zero for disabled).
+        /// </summary>
+        public TimeSpan Heartbeat { get { return  this.m_connection?.Heartbeat ?? TimeSpan.Zero; } }
+
+        /// <summary>
         /// 异常回调
         /// </summary>
         public Action<Exception, IDictionary<string, object>, string> CallbackException;

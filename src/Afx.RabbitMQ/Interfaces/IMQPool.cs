@@ -18,6 +18,16 @@ namespace Afx.RabbitMQ
     /// </summary>
     public interface IMQPool : IDisposable
     {
+        /// <summary>
+        /// Returns true if the connection is still in a state where it can be used. Identical
+        /// to checking if RabbitMQ.Client.IConnection.CloseReason equal null.
+        /// </summary>
+        bool IsOpen { get; }
+        /// <summary>
+        /// The current heartbeat setting for this connection (System.TimeSpan.Zero for disabled).
+        /// </summary>
+        TimeSpan Heartbeat { get; }
+
         #region Declare
         /// <summary>
         /// ExchangeDeclare
