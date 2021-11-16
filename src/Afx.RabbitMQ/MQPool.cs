@@ -610,7 +610,7 @@ namespace Afx.RabbitMQ
                     }
                     else
                     {
-                        consumer.Model.BasicReject(e.DeliveryTag, true);
+                        consumer.Model.BasicNack(e.DeliveryTag, false, true);
                     }
                 };
                 channel.BasicConsume(queue, false, eventingBasicConsumer);
