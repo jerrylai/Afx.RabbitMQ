@@ -174,6 +174,7 @@ namespace Afx.RabbitMQ
         /// <typeparam name="T"></typeparam>
         /// <param name="hander"></param>
         /// <param name="queue"></param>
-        void Subscribe<T>(SubscribeHander<T> hander, string queue);
+        /// <param name="autoAck">是否自动确认</param>
+        void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false);
     }
 }

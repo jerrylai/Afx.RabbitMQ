@@ -579,7 +579,8 @@ namespace Afx.RabbitMQ
         /// <typeparam name="T"></typeparam>
         /// <param name="hander"></param>
         /// <param name="queue"></param>
-        public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue)
+        /// <param name="autoAck">是否自动确认</param>
+        public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false)
         {
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
@@ -604,16 +605,19 @@ namespace Afx.RabbitMQ
                         catch { }
                     }
 
-                    if (handerOk)
+                    if (!autoAck)
                     {
-                        consumer.Model.BasicAck(e.DeliveryTag, false);
-                    }
-                    else
-                    {
-                        consumer.Model.BasicNack(e.DeliveryTag, false, true);
+                        if (handerOk)
+                        {
+                            consumer.Model.BasicAck(e.DeliveryTag, false);
+                        }
+                        else
+                        {
+                            consumer.Model.BasicNack(e.DeliveryTag, false, true);
+                        }
                     }
                 };
-                channel.BasicConsume(queue, false, eventingBasicConsumer);
+                channel.BasicConsume(queue, autoAck, eventingBasicConsumer);
             }
         }
 
