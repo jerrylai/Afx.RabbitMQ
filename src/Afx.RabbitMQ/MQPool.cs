@@ -640,15 +640,27 @@ namespace Afx.RabbitMQ
             {
                 lock (this.disObj)
                 {
-                    if (this.m_subChannel != null) this.m_subChannel.Dispose();
+                    if (this.m_subChannel != null)
+                    {
+                        try { if (this.m_subChannel.IsOpen) this.m_subChannel.Close(); } catch { }
+                        try { this.m_subChannel.Dispose(); } catch { }
+                    }
                     this.m_subChannel = null;
                     IModel model;
                     while (this.m_publishChannelQueue != null && this.m_publishChannelQueue.TryDequeue(out model))
                     {
-                        if (model != null) model.Dispose();
+                        if (model != null)
+                        {
+                            try { if (model.IsOpen) model.Close(); } catch { }
+                            try { model.Dispose(); } catch { }
+                        }
                     }
                     this.m_publishChannelQueue = null;
-                    if (this.m_connection != null) this.m_connection.Dispose();
+                    if (this.m_connection != null)
+                    {
+                        try { if (this.m_connection.IsOpen) this.m_connection.Close(); } catch { }
+                        try { this.m_connection.Dispose(); } catch { }
+                    }
                     this.m_connection = null;
                     if (this.delayQueueDic != null) this.delayQueueDic.Clear();
                     this.delayQueueDic = null;
