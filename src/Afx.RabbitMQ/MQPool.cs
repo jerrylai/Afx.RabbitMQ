@@ -292,7 +292,7 @@ namespace Afx.RabbitMQ
 
         #endregion
 
-        #region
+        #region Publish
         private ReadOnlyMemory<byte> Serialize<T>(T m, out string contentType)
         {
             contentType = null;
@@ -357,7 +357,7 @@ namespace Afx.RabbitMQ
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-                ph.Channel.BasicPublish(exchange, routingKey ?? "", props, body);
+                ph.Channel.BasicPublish(exchange, routingKey ?? string.Empty, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
 
@@ -414,7 +414,7 @@ namespace Afx.RabbitMQ
                     props.ContentEncoding = "utf-8";
                     if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, routingKey, true, props, body);
+                    ps.Add(exchange, routingKey ?? string.Empty, true, props, body);
                 }
                 ps.Publish();
                 // result = ph.Channel.WaitForConfirms();
@@ -452,26 +452,10 @@ namespace Afx.RabbitMQ
         public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
             string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
-            if (msg == null) throw new ArgumentNullException(nameof(msg));
             if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
-            if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
-            bool result = true;
-            string contentType = "application/octet-stream";
-            var body = serialize != null ? serialize(msg) : Serialize(msg, out contentType);
-            using (var ph = GetPublishChannel())
-            {
-                //ph.Channel.ConfirmSelect();
-                IBasicProperties props = ph.Channel.CreateBasicProperties();
-                props.Persistent = persistent;
-                props.ContentType = contentType;
-                props.ContentEncoding = "utf-8";
-                props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                ph.Channel.BasicPublish(exchange, delayRoutingKey, props, body);
-                //result = ph.Channel.WaitForConfirms();
-            }
-            return result;
+            return this.Publish(msg, delayRoutingKey, delay, exchange, persistent, serialize);
         }
 
         /// <summary>
@@ -487,7 +471,9 @@ namespace Afx.RabbitMQ
         public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.PublishDelay(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
+            if (string.IsNullOrEmpty(config.DelayRoutingKey)) throw new ArgumentNullException(nameof(config.DelayRoutingKey));
+
+            return this.Publish(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
         }
 
         /// <summary>
@@ -507,30 +493,9 @@ namespace Afx.RabbitMQ
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
-            if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
-            bool result = true;
-            using (var ph = GetPublishChannel())
-            {
-                //ph.Channel.ConfirmSelect();
-                var ps = ph.Channel.CreateBasicPublishBatch();
-                foreach (var m in msgs)
-                {
-                    string contentType = "application/octet-stream";
-                    var body = serialize != null ? serialize(m) : Serialize<T>(m, out contentType);
-                    IBasicProperties props = ph.Channel.CreateBasicProperties();
-                    props.Persistent = persistent;
-                    props.ContentType = contentType;
-                    props.ContentEncoding = "utf-8";
-                    props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, delayRoutingKey, true, props, body);
-                }
-                ps.Publish();
-                //result = ph.Channel.WaitForConfirms();
-            }
-
-            return result;
+            return this.Publish(msgs, delayRoutingKey, delay, exchange, persistent, serialize);
         }
 
         /// <summary>
@@ -545,8 +510,13 @@ namespace Afx.RabbitMQ
         /// <returns>是否发生成功</returns>
         public virtual bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
+            if (msgs == null) throw new ArgumentNullException(nameof(msgs));
+            if (msgs.Count == 0) return true;
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.PublishDelay(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
+            if (string.IsNullOrEmpty(config.DelayRoutingKey)) throw new ArgumentNullException(nameof(config.DelayRoutingKey));
+            if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
+
+            return this.Publish(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
         }
 
         #endregion
@@ -601,7 +571,7 @@ namespace Afx.RabbitMQ
         /// <param name="deserialize">自定义反序列化</param>
         public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false, Func<ReadOnlyMemory<byte>, T> deserialize = null)
         {
-            if (!this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is false, no support！");
+            if (this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is true, no support！");
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
             var channel = GetSubscribeChannel();
