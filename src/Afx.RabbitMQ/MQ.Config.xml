@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <xml>
     <Exchange>
-        <Key exchange="afx.test" type="topic" durable="true" autoDelete="false" >
+        <Key exchange="amq.direct" type="direct" durable="true" autoDelete="false" >
             <Arguments key="1" value="1" />
         </Key>
     </Exchange>

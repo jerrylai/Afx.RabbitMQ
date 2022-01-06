@@ -10,13 +10,13 @@ namespace Afx.RabbitMQ
     public class ExchangeConfig
     {
         /// <summary>
-        /// 默认amq.topic
+        /// 默认amq.direct
         /// </summary>
-        public string Exchange { get; set; } = "amq.topic";
+        public string Exchange { get; set; } = "amq.direct";
         /// <summary>
-        /// direct、fanout、topic, 默认topic
+        /// direct、fanout、topic, 默认direct
         /// </summary>
-        public string Type { get; set; } = "topic";
+        public string Type { get; set; } = "direct";
         /// <summary>
         /// 是否持久化, 默认true
         /// </summary>

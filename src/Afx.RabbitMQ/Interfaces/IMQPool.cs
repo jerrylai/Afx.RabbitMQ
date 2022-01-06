@@ -58,7 +58,17 @@ namespace Afx.RabbitMQ
         /// </summary>
         TimeSpan Heartbeat { get; }
 
-        #region Declare
+        #region Exchange
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="exchange"></param>
+        /// <param name="type"></param>
+        /// <param name="durable">是否持久化, 默认true</param>
+        /// <param name="autoDelete">当已经没有消费者时，服务器是否可以删除该Exchange, 默认false</param>
+        /// <param name="arguments"></param>
+        void ExchangeDeclare(string exchange = "amq.direct", string type = "direct", bool durable = true, bool autoDelete = false, IDictionary<string, object> arguments = null);
+
         /// <summary>
         /// ExchangeDeclare
         /// </summary>
@@ -66,11 +76,14 @@ namespace Afx.RabbitMQ
         void ExchangeDeclare(ExchangeConfig config);
 
         /// <summary>
-        /// 批量ExchangeDeclare
+        /// 批量 ExchangeDeclare
         /// </summary>
         /// <param name="configs"></param>
         void ExchangeDeclare(IEnumerable<ExchangeConfig> configs);
 
+        #endregion
+
+        #region Queue
         /// <summary>
         /// QueueDeclare
         /// </summary>
@@ -84,10 +97,10 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <param name="queues"></param>
         void QueueDeclare(IEnumerable<QueueConfig> queues);
-
         #endregion
 
-        #region
+
+        #region Publish
 
         /// <summary>
         /// 发布消息
@@ -101,7 +114,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布消息
@@ -127,7 +140,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布消息
@@ -153,7 +166,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -179,7 +192,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -195,6 +208,7 @@ namespace Afx.RabbitMQ
 
         #endregion
 
+        #region Subscribe
         /// <summary>
         /// 同步消费消息
         /// </summary>
@@ -214,5 +228,6 @@ namespace Afx.RabbitMQ
         /// <param name="autoAck">是否自动确认</param>
         /// <param name="deserialize">自定义反序列化</param>
         void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, Func<ReadOnlyMemory<byte>, T> deserialize = null);
+    #endregion
     }
 }

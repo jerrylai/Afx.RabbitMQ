@@ -22,9 +22,9 @@ namespace Afx.RabbitMQ
         /// </summary>
         public string DelayRoutingKey { get; set; }
         /// <summary>
-        /// 默认 amq.topic
+        /// 默认 amq.direct
         /// </summary>
-        public string Exchange { get; set; } = "amq.topic";
+        public string Exchange { get; set; } = "amq.direct";
 
         /// <summary>
         /// 路由key是否加参数

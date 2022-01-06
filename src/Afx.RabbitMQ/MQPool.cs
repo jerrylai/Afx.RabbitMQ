@@ -182,7 +182,25 @@ namespace Afx.RabbitMQ
             return new PublishChannel(this, ch);
         }
 
-        #region Declare
+        #region Exchange
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="exchange"></param>
+        /// <param name="type"></param>
+        /// <param name="durable">是否持久化, 默认true</param>
+        /// <param name="autoDelete">当已经没有消费者时，服务器是否可以删除该Exchange, 默认false</param>
+        /// <param name="arguments"></param>
+        public virtual void ExchangeDeclare(string exchange = "amq.direct", string type = "direct", bool durable = true, bool autoDelete = false, IDictionary<string, object> arguments = null)
+        {
+            if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
+            if (string.IsNullOrEmpty(type)) throw new ArgumentNullException(nameof(type));
+            using (var ph = GetPublishChannel())
+            {
+                ph.Channel.ExchangeDeclare(exchange, type, durable, autoDelete, arguments);
+            }
+        }
+
         /// <summary>
         /// ExchangeDeclare
         /// </summary>
@@ -190,12 +208,7 @@ namespace Afx.RabbitMQ
         public virtual void ExchangeDeclare(ExchangeConfig config)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            if (string.IsNullOrEmpty(config.Exchange)) throw new ArgumentNullException(nameof(config.Exchange));
-            if (string.IsNullOrEmpty(config.Type)) throw new ArgumentNullException(nameof(config.Type));
-            using (var ph = GetPublishChannel())
-            {
-                ph.Channel.ExchangeDeclare(config.Exchange, config.Exchange, config.Durable, config.AutoDelete, config.Arguments);
-            }
+            this.ExchangeDeclare(config.Exchange, config.Type, config.Durable, config.AutoDelete, config.Arguments);
         }
 
         /// <summary>
@@ -228,13 +241,13 @@ namespace Afx.RabbitMQ
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (string.IsNullOrEmpty(config.Queue)) throw new ArgumentNullException(nameof(config.Queue));
-            if (string.IsNullOrEmpty(config.RoutingKey)) throw new ArgumentNullException(nameof(config.RoutingKey));
             if (string.IsNullOrEmpty(config.Exchange)) throw new ArgumentNullException(nameof(config.Exchange));
             using (var ph = GetPublishChannel())
             {
                 var ok = ph.Channel.QueueDeclare(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
                 ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey, config.BindArguments);
-                if(!string.IsNullOrEmpty(config.DelayQueue) && !string.IsNullOrEmpty(config.DelayRoutingKey))
+                if(!string.IsNullOrEmpty(config.DelayQueue) && !string.IsNullOrEmpty(config.DelayRoutingKey) && !string.IsNullOrEmpty(config.RoutingKey)
+                    && config.Queue != config.DelayQueue && config.RoutingKey != config.DelayRoutingKey)
                 {
                     Dictionary<string, object> dic = new Dictionary<string, object>(2);
                     dic.Add("x-dead-letter-exchange", config.Exchange);
@@ -256,7 +269,6 @@ namespace Afx.RabbitMQ
             {
                 if (item == null) throw new ArgumentNullException($"{nameof(queues)} item is null!");
                 if (string.IsNullOrEmpty(item.Queue)) throw new ArgumentNullException($"{nameof(queues)} item.{nameof(item.Queue)} is null!");
-                if (string.IsNullOrEmpty(item.RoutingKey)) throw new ArgumentNullException($"{nameof(queues)} item.{nameof(item.RoutingKey)} is null!");
                 if (string.IsNullOrEmpty(item.Exchange)) throw new ArgumentNullException($"{nameof(queues)} item.{nameof(item.Exchange)} is null!");
             }
             using (var ph = GetPublishChannel())
@@ -265,7 +277,8 @@ namespace Afx.RabbitMQ
                 {
                     var ok = ph.Channel.QueueDeclare(item.Queue, item.Durable, item.Exclusive, item.AutoDelete, item.QueueArguments);
                     ph.Channel.QueueBind(item.Queue, item.Exchange, item.RoutingKey, item.BindArguments);
-                    if (!string.IsNullOrEmpty(item.DelayQueue) && !string.IsNullOrEmpty(item.DelayRoutingKey))
+                    if (!string.IsNullOrEmpty(item.DelayQueue) && !string.IsNullOrEmpty(item.DelayRoutingKey) && !string.IsNullOrEmpty(item.RoutingKey)
+                        && item.Queue != item.DelayQueue && item.RoutingKey != item.DelayRoutingKey)
                     {
                         Dictionary<string, object> dic = new Dictionary<string, object>(2);
                         dic.Add("x-dead-letter-exchange", item.Exchange);
@@ -328,10 +341,9 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         public virtual bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msg == null) throw new ArgumentNullException(nameof(msg));
-            if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             bool result = true;
@@ -345,7 +357,7 @@ namespace Afx.RabbitMQ
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-                ph.Channel.BasicPublish(exchange, routingKey, props, body);
+                ph.Channel.BasicPublish(exchange, routingKey ?? "", props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
 
@@ -380,7 +392,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         public virtual bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
@@ -438,7 +450,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msg == null) throw new ArgumentNullException(nameof(msg));
             if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
@@ -490,7 +502,7 @@ namespace Afx.RabbitMQ
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         public virtual bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;

@@ -41,9 +41,9 @@ namespace Afx.RabbitMQ
         public bool AutoDelete { get; set; } = false;
 
         /// <summary>
-        /// 默认amq.topic
+        /// 默认amq.direct
         /// </summary>
-        public string Exchange { get; set; } = "amq.topic";
+        public string Exchange { get; set; } = "amq.direct";
 
         /// <summary>
         /// 队列参数
