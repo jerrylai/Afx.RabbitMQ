@@ -19,6 +19,15 @@ namespace Afx.RabbitMQ
         public string RoutingKey { get; set; }
 
         /// <summary>
+        /// 延迟队列
+        /// </summary>
+        public string DelayQueue { get; set; }
+        /// <summary>
+        /// 延迟队列路由key
+        /// </summary>
+        public string DelayRoutingKey { get; set; }
+
+        /// <summary>
         /// 队列是否持久化，默认true
         /// </summary>
         public bool Durable { get; set; } = true;

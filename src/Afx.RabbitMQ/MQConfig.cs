@@ -109,6 +109,15 @@ namespace Afx.RabbitMQ
                     if (string.IsNullOrEmpty(s)) throw new ArgumentException($"Queue ({m.Queue}) routingKey config is null!");
                     m.RoutingKey = s;
 
+                    //delay
+                    s = element.GetAttribute("delayQueue");
+                    var s2 = element.GetAttribute("delayRoutingKey");
+                    if (!string.IsNullOrEmpty(s) && !string.IsNullOrEmpty(s2))
+                    {
+                        m.DelayQueue = s;
+                        m.DelayRoutingKey = s2;
+                    }
+
                     s = element.GetAttribute("exchange");
                     if (!string.IsNullOrEmpty(s)) m.Exchange = s;
 
@@ -180,6 +189,9 @@ namespace Afx.RabbitMQ
                     s = element.GetAttribute("routingKey");
                     if (string.IsNullOrEmpty(s)) throw new ArgumentNullException($"PubMsg ({s}) routingKey config is null!");
                     m.RoutingKey = s;
+
+                    s = element.GetAttribute("delayRoutingKey");
+                    if (!string.IsNullOrEmpty(s)) m.DelayRoutingKey = s;
 
                     s = element.GetAttribute("exchange");
                     if (!string.IsNullOrEmpty(s)) m.Exchange = s;

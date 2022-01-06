@@ -7,6 +7,13 @@ using Afx.RabbitMQ.Json;
 
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+#if NETCOREAPP || NETSTANDARD
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+#else
+using Newtonsoft.Json;
+#endif
 
 namespace Afx.RabbitMQ
 {
@@ -15,37 +22,6 @@ namespace Afx.RabbitMQ
     /// </summary>
     public class MQPool : IMQPool
     {
-        class PublishChannel : IDisposable
-        {
-            private MQPool pool;
-            public IModel Channel { get; private set; }
-            public PublishChannel(MQPool pool, IModel channel)
-            {
-                if (pool == null) throw new ArgumentNullException(nameof(pool));
-                if (channel == null) throw new ArgumentNullException(nameof(channel));
-                this.pool = pool;
-                this.Channel = channel;
-            }
-
-            public void Dispose()
-            {
-                if (this.pool != null)
-                {
-                    if (this.pool.maxPool > this.pool.m_publishChannelQueue.Count && this.Channel.IsOpen)
-                    {
-                        this.pool.m_publishChannelQueue.Enqueue(this.Channel);
-                    }
-                    else
-                    {
-                        if (this.Channel.IsOpen) this.Channel.Close();
-                        this.Channel.Dispose();
-                    }
-                }
-                this.pool = null;
-                this.Channel = null;
-            }
-        }
-
         private object lockCreate = new object();
         private IAsyncConnectionFactory m_connectionFactory;
         private IConnection m_connection;
@@ -53,13 +29,10 @@ namespace Afx.RabbitMQ
 
         private IModel m_subChannel;
         private object lockSubChannel = new object();
+        private List<ConsumerBase> consumerList = new List<ConsumerBase>();
 
         private readonly int maxPool = 5;
         private ConcurrentQueue<IModel> m_publishChannelQueue = new ConcurrentQueue<IModel>();
-
-        private const string DELAY_QUEUE = "delay";
-        private object delayQueueObj = new object();
-        private ConcurrentDictionary<string, string> delayQueueDic = new ConcurrentDictionary<string, string>();
 
         /// <summary>
         /// Returns true if the connection is still in a state where it can be used. Identical
@@ -76,6 +49,53 @@ namespace Afx.RabbitMQ
         /// </summary>
         public Action<Exception, IDictionary<string, object>, string> CallbackException;
 
+#if NETCOREAPP || NETSTANDARD
+        private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions()
+        {
+            IgnoreNullValues = true,
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            PropertyNameCaseInsensitive = false,
+            PropertyNamingPolicy = null,
+            DictionaryKeyPolicy = null
+        };
+        private JsonSerializerOptions options = jsonOptions;
+
+        static MQPool()
+        {
+            jsonOptions.Converters.Add(new StringJsonConverter());
+            jsonOptions.Converters.Add(new BooleanJsonConverter());
+            jsonOptions.Converters.Add(new IntJsonConverter());
+            jsonOptions.Converters.Add(new LongJsonConverter());
+            jsonOptions.Converters.Add(new FloatJsonConverter());
+            jsonOptions.Converters.Add(new DoubleJsonConverter());
+            jsonOptions.Converters.Add(new DecimalJsonConverter());
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="jsonSerializerOptions"></param>
+        public void SetJsonOptions(JsonSerializerOptions jsonSerializerOptions)
+        {
+            if (jsonSerializerOptions != null) this.options = jsonSerializerOptions;
+        }
+#else
+        private static readonly JsonSerializerSettings jsonOptions = new JsonSerializerSettings()
+        {
+            NullValueHandling = NullValueHandling.Ignore,
+            MissingMemberHandling = Newtonsoft.Json.MissingMemberHandling.Ignore
+        };
+        private JsonSerializerSettings options = jsonOptions;
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="jsonSerializerOptions"></param>
+        public void SetJsonOptions(JsonSerializerSettings jsonSerializerOptions)
+        {
+            if (jsonSerializerOptions != null) this.options = jsonSerializerOptions;
+        }
+#endif
+
         /// <summary>
         /// mq应用池
         /// </summary>
@@ -87,7 +107,8 @@ namespace Afx.RabbitMQ
         /// <param name="maxPool">push池大小</param>
         /// <param name="networkRecoveryInterval"></param>
         /// <param name="clientName"></param>
-        public MQPool(string hostName, int port, string userName, string password, string virtualHost, int maxPool = 5, int networkRecoveryInterval = 15, string clientName = null)
+        /// <param name="consumersAsync">async 消费</param>
+        public MQPool(string hostName, int port, string userName, string password, string virtualHost, int maxPool = 5, int networkRecoveryInterval = 15, string clientName = null, bool consumersAsync = true)
         {
             if (string.IsNullOrEmpty(hostName)) throw new ArgumentNullException(nameof(virtualHost));
             if (port <= System.Net.IPEndPoint.MinPort || System.Net.IPEndPoint.MaxPort <= port) throw new ArgumentException(nameof(port));
@@ -103,7 +124,7 @@ namespace Afx.RabbitMQ
                 UserName = userName,
                 Password = password,
                 VirtualHost = virtualHost,
-                DispatchConsumersAsync = true,
+                DispatchConsumersAsync = consumersAsync,
                 AutomaticRecoveryEnabled = true,
                 NetworkRecoveryInterval = TimeSpan.FromSeconds(networkRecoveryInterval)
             };
@@ -165,64 +186,61 @@ namespace Afx.RabbitMQ
         /// <summary>
         /// ExchangeDeclare
         /// </summary>
-        /// <param name="exchange">exchange</param>
-        /// <param name="durable">是否持久化</param>
-        /// <param name="autoDelete">当已经没有消费者时，服务器是否可以删除该Exchange</param>
-        /// <param name="type">direct、fanout、topic</param>
-        /// <param name="arguments"></param>
-        public virtual void ExchangeDeclare(string exchange = "amq.topic", bool durable = true, bool autoDelete = false,
-            string type = "topic", IDictionary<string, object> arguments = null)
+        /// <param name="config"></param>
+        public virtual void ExchangeDeclare(ExchangeConfig config)
         {
-            if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
-            if (string.IsNullOrEmpty(type)) throw new ArgumentNullException(nameof(type));
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            if (string.IsNullOrEmpty(config.Exchange)) throw new ArgumentNullException(nameof(config.Exchange));
+            if (string.IsNullOrEmpty(config.Type)) throw new ArgumentNullException(nameof(config.Type));
             using (var ph = GetPublishChannel())
             {
-                ph.Channel.ExchangeDeclare(exchange, type, durable, autoDelete, arguments);
-            }
-        }
-
-        /// <summary>
-        /// QueueDeclare
-        /// </summary>
-        /// <param name="queue">queue</param>
-        /// <param name="routingKey">routingKey</param>
-        /// <param name="durable">是否持久化</param>
-        /// <param name="exclusive">连接断开是否删除队列</param>
-        /// <param name="autoDelete">当已经没有消费者时，服务器是否可以删除该Exchange</param>
-        /// <param name="exchange">exchange</param>
-        /// <param name="queueArguments">queueArguments</param>
-        /// <param name="bindArguments">bindArguments</param>
-        public virtual void QueueDeclare(string queue, string routingKey, bool durable = true, bool exclusive = false, bool autoDelete = false,
-             string exchange = "amq.topic", IDictionary<string, object> queueArguments = null, IDictionary<string, object> bindArguments = null)
-        {
-            if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
-            if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
-            if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
-            using (var ph = GetPublishChannel())
-            {
-                var ok = ph.Channel.QueueDeclare(queue, durable, exclusive, autoDelete, queueArguments);
-                ph.Channel.QueueBind(queue, exchange, routingKey, bindArguments);
+                ph.Channel.ExchangeDeclare(config.Exchange, config.Exchange, config.Durable, config.AutoDelete, config.Arguments);
             }
         }
 
         /// <summary>
         /// 批量ExchangeDeclare
         /// </summary>
-        /// <param name="exchanges"></param>
-        public virtual void ExchangeDeclare(IEnumerable<ExchangeConfig> exchanges)
+        /// <param name="configs"></param>
+        public virtual void ExchangeDeclare(IEnumerable<ExchangeConfig> configs)
         {
-            if (exchanges == null) throw new ArgumentNullException(nameof(exchanges));
-            foreach (var item in exchanges)
+            if (configs == null) throw new ArgumentNullException(nameof(configs));
+            foreach (var item in configs)
             {
-                if (item == null) throw new ArgumentNullException($"{nameof(exchanges)} item is null!");
-                if (string.IsNullOrEmpty(item.Exchange)) throw new ArgumentNullException($"{nameof(exchanges)} item.{nameof(item.Exchange)} is null!");
-                if (string.IsNullOrEmpty(item.Type)) throw new ArgumentNullException($"{nameof(exchanges)} item.{nameof(item.Type)} is null!");
+                if (item == null) throw new ArgumentNullException($"{nameof(configs)} item is null!");
+                if (string.IsNullOrEmpty(item.Exchange)) throw new ArgumentNullException($"{nameof(configs)} item.{nameof(item.Exchange)} is null!");
+                if (string.IsNullOrEmpty(item.Type)) throw new ArgumentNullException($"{nameof(configs)} item.{nameof(item.Type)} is null!");
             }
             using (var ph = GetPublishChannel())
             {
-                foreach (var item in exchanges)
+                foreach (var item in configs)
                 {
                     ph.Channel.ExchangeDeclare(item.Exchange, item.Type, item.Durable, item.AutoDelete, item.Arguments);
+                }
+            }
+        }
+
+        /// <summary>
+        /// QueueDeclare
+        /// </summary>
+        /// <param name="config"></param>
+        public virtual void QueueDeclare(QueueConfig config)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            if (string.IsNullOrEmpty(config.Queue)) throw new ArgumentNullException(nameof(config.Queue));
+            if (string.IsNullOrEmpty(config.RoutingKey)) throw new ArgumentNullException(nameof(config.RoutingKey));
+            if (string.IsNullOrEmpty(config.Exchange)) throw new ArgumentNullException(nameof(config.Exchange));
+            using (var ph = GetPublishChannel())
+            {
+                var ok = ph.Channel.QueueDeclare(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
+                ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey, config.BindArguments);
+                if(!string.IsNullOrEmpty(config.DelayQueue) && !string.IsNullOrEmpty(config.DelayRoutingKey))
+                {
+                    Dictionary<string, object> dic = new Dictionary<string, object>(2);
+                    dic.Add("x-dead-letter-exchange", config.Exchange);
+                    dic.Add("x-dead-letter-routing-key", config.RoutingKey);
+                    ok = ph.Channel.QueueDeclare(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
+                    ph.Channel.QueueBind(config.DelayQueue, config.Exchange, config.DelayRoutingKey, null);
                 }
             }
         }
@@ -247,6 +265,14 @@ namespace Afx.RabbitMQ
                 {
                     var ok = ph.Channel.QueueDeclare(item.Queue, item.Durable, item.Exclusive, item.AutoDelete, item.QueueArguments);
                     ph.Channel.QueueBind(item.Queue, item.Exchange, item.RoutingKey, item.BindArguments);
+                    if (!string.IsNullOrEmpty(item.DelayQueue) && !string.IsNullOrEmpty(item.DelayRoutingKey))
+                    {
+                        Dictionary<string, object> dic = new Dictionary<string, object>(2);
+                        dic.Add("x-dead-letter-exchange", item.Exchange);
+                        dic.Add("x-dead-letter-routing-key", item.RoutingKey);
+                        ok = ph.Channel.QueueDeclare(item.DelayQueue, item.Durable, item.Exclusive, item.AutoDelete, dic);
+                        ph.Channel.QueueBind(item.DelayQueue, item.Exchange, item.DelayRoutingKey, null);
+                    }
                 }
             }
         }
@@ -278,7 +304,11 @@ namespace Afx.RabbitMQ
             }
             else
             {
-                var json = JsonUtils.Serialize(m);
+#if NETCOREAPP || NETSTANDARD
+                var json = JsonSerializer.Serialize(m, this.options);
+#else
+                var json = JsonConvert.SerializeObject(m, this.options);
+#endif
                 contentType = "application/json";
                 result = Encoding.UTF8.GetBytes(json);
             }
@@ -295,17 +325,18 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         public virtual bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.topic", bool persistent = false)
+            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msg == null) throw new ArgumentNullException(nameof(msg));
             if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             bool result = true;
-            string contentType = null;
-            var body = Serialize<T>(msg, out contentType);
+            string contentType = "application/octet-stream";
+            var body = serialize != null ? serialize(msg) : Serialize<T>(msg, out contentType);
             using (var ph = GetPublishChannel())
             {
                 //ph.Channel.ConfirmSelect();
@@ -317,6 +348,7 @@ namespace Afx.RabbitMQ
                 ph.Channel.BasicPublish(exchange, routingKey, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
+
             return result;
         }
 
@@ -328,11 +360,12 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false)
+        public virtual bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.Publish(msg, config.RoutingKey, expire, config.Exchange, persistent);
+            return this.Publish(msg, config.RoutingKey, expire, config.Exchange, persistent, serialize);
         }
 
         /// <summary>
@@ -344,9 +377,10 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         public virtual bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.topic", bool persistent = false)
+            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
@@ -354,14 +388,14 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             bool result = true;
-            string contentType = null;
+            string contentType = "application/octet-stream";
             using (var ph = GetPublishChannel())
             {
                 //ph.Channel.ConfirmSelect();
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
-                    var body = Serialize<T>(m, out contentType);
+                    var body = serialize != null ? serialize(m) : Serialize<T>(m, out contentType);
                     IBasicProperties props = ph.Channel.CreateBasicProperties();
                     props.Persistent = persistent;
                     props.ContentType = contentType;
@@ -384,11 +418,12 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false)
+        public virtual bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.Publish(msgs, config.RoutingKey, expire, config.Exchange, persistent);
+            return this.Publish(msgs, config.RoutingKey, expire, config.Exchange, persistent, serialize);
         }
 
         /// <summary>
@@ -396,42 +431,24 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="msg">消息</param>
-        /// <param name="routingKey">routingKey</param>
+        /// <param name="delayRoutingKey">routingKey</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, string routingKey, TimeSpan delay,
-            string exchange = "amq.topic", bool persistent = false)
+        public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
+            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msg == null) throw new ArgumentNullException(nameof(msg));
-            if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
+            if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
             bool result = true;
-            string contentType = null;
-            var body = Serialize(msg, out contentType);
+            string contentType = "application/octet-stream";
+            var body = serialize != null ? serialize(msg) : Serialize(msg, out contentType);
             using (var ph = GetPublishChannel())
             {
-                string queue = null;
-                var kv = $"{exchange}|{routingKey}";
-                if (!delayQueueDic.TryGetValue(kv, out queue))
-                {
-                    lock (delayQueueObj)
-                    {
-                        if (!delayQueueDic.TryGetValue(kv, out queue))
-                        {
-                            queue = $"{DELAY_QUEUE}.{Guid.NewGuid().ToString("n")}";
-                            Dictionary<string, object> dic = new Dictionary<string, object>(2);
-                            dic.Add("x-dead-letter-exchange", exchange);
-                            dic.Add("x-dead-letter-routing-key", routingKey);
-                            ph.Channel.QueueDeclare(queue, true, true, false, dic);
-                            ph.Channel.QueueBind(queue, exchange, queue, null);
-                            delayQueueDic.TryAdd(kv, queue);
-                        }
-                    }
-                }
-
                 //ph.Channel.ConfirmSelect();
                 IBasicProperties props = ph.Channel.CreateBasicProperties();
                 props.Persistent = persistent;
@@ -439,7 +456,7 @@ namespace Afx.RabbitMQ
                 props.ContentEncoding = "utf-8";
                 props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                ph.Channel.BasicPublish(exchange, queue, props, body);
+                ph.Channel.BasicPublish(exchange, delayRoutingKey, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
             return result;
@@ -453,11 +470,12 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false)
+        public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.PublishDelay(msg, config.RoutingKey, delay, config.Exchange, persistent);
+            return this.PublishDelay(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
         }
 
         /// <summary>
@@ -465,58 +483,41 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="msgs">消息</param>
-        /// <param name="routingKey">routingKey</param>
+        /// <param name="delayRoutingKey">delayRoutingKey</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, string routingKey, TimeSpan delay,
-            string exchange = "amq.topic", bool persistent = false)
+        public virtual bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay,
+            string exchange = "amq.topic", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
-            if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
+            if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
             bool result = true;
-            string contentType = null;
             using (var ph = GetPublishChannel())
             {
-                string queue = null;
-                var kv = $"{exchange}|{routingKey}";
-                if (!delayQueueDic.TryGetValue(kv, out queue))
-                {
-                    lock (delayQueueObj)
-                    {
-                        if (!delayQueueDic.TryGetValue(kv, out queue))
-                        {
-                            queue = $"{DELAY_QUEUE}.{Guid.NewGuid().ToString("n")}";
-                            Dictionary<string, object> dic = new Dictionary<string, object>(2);
-                            dic.Add("x-dead-letter-exchange", exchange);
-                            dic.Add("x-dead-letter-routing-key", routingKey);
-                            ph.Channel.QueueDeclare(queue, true, true, false, dic);
-                            ph.Channel.QueueBind(queue, exchange, queue, dic);
-                            delayQueueDic.TryAdd(kv, queue);
-                        }
-                    }
-                }
-
                 //ph.Channel.ConfirmSelect();
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
-                    var body = Serialize<T>(m, out contentType);
+                    string contentType = "application/octet-stream";
+                    var body = serialize != null ? serialize(m) : Serialize<T>(m, out contentType);
                     IBasicProperties props = ph.Channel.CreateBasicProperties();
                     props.Persistent = persistent;
                     props.ContentType = contentType;
                     props.ContentEncoding = "utf-8";
                     props.Expiration = delay.TotalMilliseconds.ToString("f0");
 
-                    ps.Add(exchange, queue, true, props, body);
+                    ps.Add(exchange, delayRoutingKey, true, props, body);
                 }
                 ps.Publish();
                 //result = ph.Channel.WaitForConfirms();
             }
+
             return result;
         }
 
@@ -528,11 +529,12 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false)
+        public virtual bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.PublishDelay(msgs, config.RoutingKey, delay, config.Exchange, persistent);
+            return this.PublishDelay(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
         }
 
         #endregion
@@ -561,7 +563,11 @@ namespace Afx.RabbitMQ
                 var json = Encoding.UTF8.GetString(buffer.ToArray());
                 try
                 {
-                    result = JsonUtils.Deserialize<T>(json);
+#if NETCOREAPP || NETSTANDARD
+                    result = JsonSerializer.Deserialize<T>(json, this.options);
+#else
+                    result =  JsonConvert.DeserializeObject<T>(json, this.options);
+#endif
                 }
                 catch (Exception ex)
                 {
@@ -580,8 +586,35 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         /// <param name="autoAck">是否自动确认</param>
-        public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false)
+        /// <param name="deserialize">自定义反序列化</param>
+        public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false, Func<ReadOnlyMemory<byte>, T> deserialize = null)
         {
+            if (!this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is false, no support！");
+            if (hander == null) throw new ArgumentNullException(nameof(hander));
+            if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
+            var channel = GetSubscribeChannel();
+            lock (lockSubChannel)
+            {
+                channel.BasicQos(0, 1, false);
+                var eventingBasicConsumer = new EventingBasicConsumer(channel);
+                var consumer = new Consumer<T>(this, eventingBasicConsumer, hander, autoAck, deserialize);
+                this.consumerList.Add(consumer);
+                eventingBasicConsumer.Received += consumer.Handler;
+                channel.BasicConsume(queue, autoAck, eventingBasicConsumer);
+            }
+        }
+
+        /// <summary>
+        /// 消费消息
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="hander"></param>
+        /// <param name="queue"></param>
+        /// <param name="autoAck">是否自动确认</param>
+        /// <param name="deserialize">自定义反序列化</param>
+        public virtual void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, Func<ReadOnlyMemory<byte>, T> deserialize = null)
+        {
+            if(!this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is false, no support！");
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
             var channel = GetSubscribeChannel();
@@ -589,34 +622,9 @@ namespace Afx.RabbitMQ
             {
                 channel.BasicQos(0, 1, false);
                 var eventingBasicConsumer = new AsyncEventingBasicConsumer(channel);
-                eventingBasicConsumer.Received += async (o, e) =>
-                {
-                    var consumer = o as AsyncEventingBasicConsumer;
-                    bool handerOk = false;
-                    try
-                    {
-                        T m = Deserialize<T>(e.Body);
-                        if (m != null) handerOk = await hander(m);
-                        else handerOk = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        try { this.CallbackException?.Invoke(ex, null, string.Empty); }
-                        catch { }
-                    }
-
-                    if (!autoAck)
-                    {
-                        if (handerOk)
-                        {
-                            consumer.Model.BasicAck(e.DeliveryTag, false);
-                        }
-                        else
-                        {
-                            consumer.Model.BasicNack(e.DeliveryTag, false, true);
-                        }
-                    }
-                };
+                var consumer = new AsyncConsumer<T>(this, eventingBasicConsumer, hander, autoAck, deserialize);
+                this.consumerList.Add(consumer);
+                eventingBasicConsumer.Received += consumer.Handler;
                 channel.BasicConsume(queue, autoAck, eventingBasicConsumer);
             }
         }
@@ -662,11 +670,195 @@ namespace Afx.RabbitMQ
                         try { this.m_connection.Dispose(); } catch { }
                     }
                     this.m_connection = null;
-                    if (this.delayQueueDic != null) this.delayQueueDic.Clear();
-                    this.delayQueueDic = null;
                     this.CallbackException = null;
                     this.lockSubChannel = null;
+
+                    if(this.consumerList != null)
+                    {
+                        foreach (var c in this.consumerList) c.Dispose();
+                        this.consumerList.Clear();
+                        this.consumerList.TrimExcess();
+                    }
+                    this.consumerList = null;
                 }
+            }
+        }
+
+        class PublishChannel : IDisposable
+        {
+            private MQPool pool;
+            public IModel Channel { get; private set; }
+            public PublishChannel(MQPool pool, IModel channel)
+            {
+                if (pool == null) throw new ArgumentNullException(nameof(pool));
+                if (channel == null) throw new ArgumentNullException(nameof(channel));
+                this.pool = pool;
+                this.Channel = channel;
+            }
+
+            public void Dispose()
+            {
+                if (this.pool != null)
+                {
+                    if (this.pool.maxPool > this.pool.m_publishChannelQueue.Count && this.Channel.IsOpen)
+                    {
+                        this.pool.m_publishChannelQueue.Enqueue(this.Channel);
+                    }
+                    else
+                    {
+                        if (this.Channel.IsOpen) this.Channel.Close();
+                        this.Channel.Dispose();
+                    }
+                }
+                this.pool = null;
+                this.Channel = null;
+            }
+        }
+
+        class ConsumerBase: IDisposable
+        {
+            protected MQPool pool;
+
+            public ConsumerBase(MQPool pool)
+            {
+                this.pool = pool;
+            }
+
+            public virtual void Dispose(bool disposable)
+            {
+                if (disposable)
+                {
+                    this.pool = null;
+                }
+            }
+
+            public void Dispose()
+            {
+                this.Dispose(true);
+            }
+        }
+
+        class Consumer<T> : ConsumerBase
+        {
+            private EventingBasicConsumer consumer;
+            private SubscribeHander<T> hander;
+            private bool autoAck;
+            private Func<ReadOnlyMemory<byte>, T> deserialize;
+
+            public Consumer(MQPool pool, EventingBasicConsumer consumer, SubscribeHander<T> hander, bool autoAck, Func<ReadOnlyMemory<byte>, T> deserialize)
+                : base(pool)
+            {
+                this.consumer = consumer;
+                this.hander = hander;
+                this.autoAck = autoAck;
+                this.deserialize = deserialize;
+            }
+
+            private T Deserialize(ReadOnlyMemory<byte> read)
+            {
+                if (this.deserialize != null) return deserialize(read);
+                else return this.pool.Deserialize<T>(read);
+            }
+
+            public void Handler(object sender, BasicDeliverEventArgs e)
+            {
+                bool handerOk = false;
+                try
+                {
+                    T m = this.Deserialize(e.Body);
+                    if (m != null) handerOk = hander(m, e.BasicProperties?.Headers);
+                    else handerOk = true;
+                }
+                catch (Exception ex)
+                {
+                    try { this.pool.CallbackException?.Invoke(ex, null, string.Empty); }
+                    catch { }
+                }
+
+                if (!this.autoAck)
+                {
+                    if (handerOk)
+                    {
+                        consumer.Model.BasicAck(e.DeliveryTag, false);
+                    }
+                    else
+                    {
+                        consumer.Model.BasicNack(e.DeliveryTag, false, true);
+                    }
+                }
+            }
+
+           public override void Dispose(bool disposable)
+            {
+                if (disposable)
+                {
+                    this.consumer = null;
+                    this.hander = null;
+                    this.deserialize = null;
+                }
+                base.Dispose(disposable);
+            }
+        }
+
+        class AsyncConsumer<T> : ConsumerBase
+        {
+            private AsyncEventingBasicConsumer consumer;
+            private AsyncSubscribeHander<T> hander;
+            private bool autoAck;
+            private Func<ReadOnlyMemory<byte>, T> deserialize;
+
+            public AsyncConsumer(MQPool pool, AsyncEventingBasicConsumer consumer, AsyncSubscribeHander<T> hander, bool autoAck, Func<ReadOnlyMemory<byte>, T> deserialize)
+                : base(pool)
+            {
+                this.consumer = consumer;
+                this.hander = hander;
+                this.autoAck = autoAck;
+                this.deserialize = deserialize;
+            }
+
+            private T Deserialize(ReadOnlyMemory<byte> read)
+            {
+                if (this.deserialize != null) return deserialize(read);
+                else return this.pool.Deserialize<T>(read);
+            }
+
+            public async Task Handler(object sender, BasicDeliverEventArgs e)
+            {
+                bool handerOk = false;
+                try
+                {
+                    T m = this.Deserialize(e.Body);
+                    if (m != null) handerOk = await hander(m, e.BasicProperties?.Headers);
+                    else handerOk = true;
+                }
+                catch (Exception ex)
+                {
+                    try { this.pool.CallbackException?.Invoke(ex, null, string.Empty); }
+                    catch { }
+                }
+
+                if (!this.autoAck)
+                {
+                    if (handerOk)
+                    {
+                        consumer.Model.BasicAck(e.DeliveryTag, false);
+                    }
+                    else
+                    {
+                        consumer.Model.BasicNack(e.DeliveryTag, false, true);
+                    }
+                }
+            }
+
+            public override void Dispose(bool disposable)
+            {
+                if (disposable)
+                {
+                    this.consumer = null;
+                    this.hander = null;
+                    this.deserialize = null;
+                }
+                base.Dispose(disposable);
             }
         }
     }

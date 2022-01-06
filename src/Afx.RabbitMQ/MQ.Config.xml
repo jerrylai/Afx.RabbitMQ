@@ -6,7 +6,7 @@
         </Key>
     </Exchange>
     <Queue>
-        <Key queue="afx.test.webapi" routingKey="afx.test.webapi"
+        <Key queue="afx.test.webapi" routingKey="afx.test.webapi" delayQueue="" delayRoutingKey="" 
              durable="true" exclusive="false"  autoDelete="false" exchange="afx.test"
              isQueueParam="true" >
             <QueueArguments key="1" value="1" />
@@ -14,7 +14,7 @@
         </Key>
     </Queue>
     <PubMsg>
-        <Key name="TestDto" routingKey="afx.test.webapi" exchange="afx.test" isRoutingKeyParam="false" />
+        <Key name="TestDto" routingKey="afx.test.webapi" delayRoutingKey="" exchange="afx.test" isRoutingKeyParam="false" />
     </PubMsg>
     <SubMsg>
         <Key name="TestDto" queue="afx.test.webapi" isQueueParam="false" />

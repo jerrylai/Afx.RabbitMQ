@@ -17,7 +17,10 @@ namespace Afx.RabbitMQ
         /// 路由key
         /// </summary>
         public string RoutingKey { get; set; }
-
+        /// <summary>
+        /// 延迟队列路由key
+        /// </summary>
+        public string DelayRoutingKey { get; set; }
         /// <summary>
         /// 默认 amq.topic
         /// </summary>
