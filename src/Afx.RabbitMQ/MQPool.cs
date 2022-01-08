@@ -318,7 +318,17 @@ namespace Afx.RabbitMQ
             else
             {
 #if NETCOREAPP || NETSTANDARD
-                var json = JsonSerializer.Serialize(m, this.options);
+                string json = null;
+                if (m is JsonElement)
+                {
+                    object o = m;
+                    var el = (JsonElement)o;
+                    json = el.GetRawText();
+                }
+                else
+                {
+                    json = JsonSerializer.Serialize(m, this.options);
+                }
 #else
                 var json = JsonConvert.SerializeObject(m, this.options);
 #endif
