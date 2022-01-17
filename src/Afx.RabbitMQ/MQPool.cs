@@ -245,15 +245,15 @@ namespace Afx.RabbitMQ
             using (var ph = GetPublishChannel())
             {
                 var ok = ph.Channel.QueueDeclare(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
-                ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey, config.BindArguments);
-                if(!string.IsNullOrEmpty(config.DelayQueue) && !string.IsNullOrEmpty(config.DelayRoutingKey) && !string.IsNullOrEmpty(config.RoutingKey)
-                    && config.Queue != config.DelayQueue && config.RoutingKey != config.DelayRoutingKey)
+                ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
+                if(!string.IsNullOrEmpty(config.DelayQueue) && config.Queue != config.DelayQueue 
+                    && (config.RoutingKey != config.DelayRoutingKey || string.IsNullOrEmpty(config.DelayRoutingKey) || string.IsNullOrEmpty(config.RoutingKey)))
                 {
                     Dictionary<string, object> dic = new Dictionary<string, object>(2);
                     dic.Add("x-dead-letter-exchange", config.Exchange);
-                    dic.Add("x-dead-letter-routing-key", config.RoutingKey);
+                    dic.Add("x-dead-letter-routing-key", config.RoutingKey ?? string.Empty);
                     ok = ph.Channel.QueueDeclare(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
-                    ph.Channel.QueueBind(config.DelayQueue, config.Exchange, config.DelayRoutingKey, null);
+                    ph.Channel.QueueBind(config.DelayQueue, config.Exchange, config.DelayRoutingKey ?? string.Empty, null);
                 }
             }
         }
@@ -273,18 +273,18 @@ namespace Afx.RabbitMQ
             }
             using (var ph = GetPublishChannel())
             {
-                foreach (var item in queues)
+                foreach (var config in queues)
                 {
-                    var ok = ph.Channel.QueueDeclare(item.Queue, item.Durable, item.Exclusive, item.AutoDelete, item.QueueArguments);
-                    ph.Channel.QueueBind(item.Queue, item.Exchange, item.RoutingKey, item.BindArguments);
-                    if (!string.IsNullOrEmpty(item.DelayQueue) && !string.IsNullOrEmpty(item.DelayRoutingKey) && !string.IsNullOrEmpty(item.RoutingKey)
-                        && item.Queue != item.DelayQueue && item.RoutingKey != item.DelayRoutingKey)
+                    var ok = ph.Channel.QueueDeclare(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
+                    ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
+                    if (!string.IsNullOrEmpty(config.DelayQueue) && config.Queue != config.DelayQueue
+                    && (config.RoutingKey != config.DelayRoutingKey || string.IsNullOrEmpty(config.DelayRoutingKey) || string.IsNullOrEmpty(config.RoutingKey)))
                     {
                         Dictionary<string, object> dic = new Dictionary<string, object>(2);
-                        dic.Add("x-dead-letter-exchange", item.Exchange);
-                        dic.Add("x-dead-letter-routing-key", item.RoutingKey);
-                        ok = ph.Channel.QueueDeclare(item.DelayQueue, item.Durable, item.Exclusive, item.AutoDelete, dic);
-                        ph.Channel.QueueBind(item.DelayQueue, item.Exchange, item.DelayRoutingKey, null);
+                        dic.Add("x-dead-letter-exchange", config.Exchange);
+                        dic.Add("x-dead-letter-routing-key", config.RoutingKey ?? string.Empty);
+                        ok = ph.Channel.QueueDeclare(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
+                        ph.Channel.QueueBind(config.DelayQueue, config.Exchange, config.DelayRoutingKey ?? string.Empty, null);
                     }
                 }
             }
@@ -406,7 +406,6 @@ namespace Afx.RabbitMQ
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
-            if (string.IsNullOrEmpty(routingKey)) throw new ArgumentNullException(nameof(routingKey));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             bool result = true;
@@ -453,7 +452,7 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="msg">消息</param>
-        /// <param name="delayRoutingKey">routingKey</param>
+        /// <param name="delayRoutingKey">delayRoutingKey</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
@@ -462,7 +461,6 @@ namespace Afx.RabbitMQ
         public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
             string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
-            if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
             return this.Publish(msg, delayRoutingKey, delay, exchange, persistent, serialize);
@@ -481,7 +479,6 @@ namespace Afx.RabbitMQ
         public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            if (string.IsNullOrEmpty(config.DelayRoutingKey)) throw new ArgumentNullException(nameof(config.DelayRoutingKey));
 
             return this.Publish(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
         }
@@ -502,7 +499,6 @@ namespace Afx.RabbitMQ
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
-            if (string.IsNullOrEmpty(delayRoutingKey)) throw new ArgumentNullException(nameof(delayRoutingKey));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
             return this.Publish(msgs, delayRoutingKey, delay, exchange, persistent, serialize);
@@ -523,7 +519,6 @@ namespace Afx.RabbitMQ
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (config == null) throw new ArgumentNullException(nameof(config));
-            if (string.IsNullOrEmpty(config.DelayRoutingKey)) throw new ArgumentNullException(nameof(config.DelayRoutingKey));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
             return this.Publish(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);

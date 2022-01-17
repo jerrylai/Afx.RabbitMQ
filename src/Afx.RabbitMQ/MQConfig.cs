@@ -110,11 +110,11 @@ namespace Afx.RabbitMQ
 
                     //delay
                     s = element.GetAttribute("delayQueue");
-                    var s2 = element.GetAttribute("delayRoutingKey");
-                    if (!string.IsNullOrEmpty(s) && !string.IsNullOrEmpty(s2))
+                    if (!string.IsNullOrEmpty(s))
                     {
                         m.DelayQueue = s;
-                        m.DelayRoutingKey = s2;
+                       s = element.GetAttribute("delayRoutingKey");
+                        m.DelayRoutingKey = s ?? string.Empty;
                     }
 
                     s = element.GetAttribute("exchange");
