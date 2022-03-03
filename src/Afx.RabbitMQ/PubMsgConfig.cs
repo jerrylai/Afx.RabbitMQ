@@ -42,6 +42,7 @@ namespace Afx.RabbitMQ
                 Name = this.Name,
                 Exchange = this.Exchange,
                 RoutingKey = this.RoutingKey,
+                DelayRoutingKey = this.DelayRoutingKey,
                 IsRoutingKeyParam = this.IsRoutingKeyParam
             };
         }

@@ -70,7 +70,9 @@ namespace Afx.RabbitMQ
             return new QueueConfig()
             {
                 Queue = this.Queue,
+                DelayQueue = this.DelayQueue,
                 RoutingKey = this.RoutingKey,
+                DelayRoutingKey = this.DelayRoutingKey,
                 Exchange = this.Exchange,
                 Durable = this.Durable,
                 AutoDelete = this.AutoDelete,
