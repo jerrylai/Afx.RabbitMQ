@@ -52,7 +52,7 @@ namespace Afx.RabbitMQ
 #if NETCOREAPP || NETSTANDARD
         private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions()
         {
-            IgnoreNullValues = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             WriteIndented = true,
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             PropertyNameCaseInsensitive = false,

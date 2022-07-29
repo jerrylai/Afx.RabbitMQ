@@ -48,6 +48,7 @@ namespace Afx.RabbitMQ
         /// <param name="jsonSerializerOptions"></param>
         void SetJsonOptions(JsonSerializerSettings jsonSerializerOptions);
 #endif
+        
         /// <summary>
         /// Returns true if the connection is still in a state where it can be used. Identical
         /// to checking if RabbitMQ.Client.IConnection.CloseReason equal null.
