@@ -112,10 +112,11 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            string exchange = "amq.direct", bool persistent = false, IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布消息
@@ -125,9 +126,11 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
-        bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 批量发布消息
@@ -138,10 +141,11 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布消息
@@ -151,9 +155,11 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
-        bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -164,10 +170,11 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -177,9 +184,11 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 批量发布延迟消息
@@ -190,10 +199,11 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -203,9 +213,11 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null);
+        bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
 
         #endregion
 

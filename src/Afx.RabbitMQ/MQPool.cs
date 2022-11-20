@@ -348,10 +348,11 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false,
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msg == null) throw new ArgumentNullException(nameof(msg));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
@@ -367,6 +368,7 @@ namespace Afx.RabbitMQ
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
+                if(headers != null) foreach(KeyValuePair<string, object> kv in headers) props.Headers.Add(kv.Key, kv.Value);
                 ph.Channel.BasicPublish(exchange, routingKey ?? string.Empty, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
@@ -382,12 +384,14 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.Publish(msg, config.RoutingKey, expire, config.Exchange, persistent, serialize);
+            return this.Publish(msg, config.RoutingKey, expire, config.Exchange, persistent, headers, serialize);
         }
 
         /// <summary>
@@ -399,10 +403,11 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
@@ -422,7 +427,7 @@ namespace Afx.RabbitMQ
                     props.ContentType = contentType;
                     props.ContentEncoding = "utf-8";
                     if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-
+                    if (headers != null) foreach (KeyValuePair<string, object> kv in headers) props.Headers.Add(kv.Key, kv.Value);
                     ps.Add(exchange, routingKey ?? string.Empty, true, props, body);
                 }
                 ps.Publish();
@@ -439,12 +444,14 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.Publish(msgs, config.RoutingKey, expire, config.Exchange, persistent, serialize);
+            return this.Publish(msgs, config.RoutingKey, expire, config.Exchange, persistent, headers, serialize);
         }
 
         /// <summary>
@@ -456,14 +463,15 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
-            return this.Publish(msg, delayRoutingKey, delay, exchange, persistent, serialize);
+            return this.Publish(msg, delayRoutingKey, delay, exchange, persistent, headers, serialize);
         }
 
         /// <summary>
@@ -474,13 +482,15 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
 
-            return this.Publish(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
+            return this.Publish(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, headers, serialize);
         }
 
         /// <summary>
@@ -492,16 +502,17 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay,
-            string exchange = "amq.direct", bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
-            return this.Publish(msgs, delayRoutingKey, delay, exchange, persistent, serialize);
+            return this.Publish(msgs, delayRoutingKey, delay, exchange, persistent, headers, serialize);
         }
 
         /// <summary>
@@ -512,16 +523,18 @@ namespace Afx.RabbitMQ
         /// <param name="config">路由配置</param>
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
+        /// <param name="headers">headers</param>
         /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, Func<T, ReadOnlyMemory<byte>> serialize = null)
+        public virtual bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
-            return this.Publish(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, serialize);
+            return this.Publish(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, headers, serialize);
         }
 
         #endregion
