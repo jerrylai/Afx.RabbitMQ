@@ -3,7 +3,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <Description>Afx.RabbitMQ for .NET Standard 2.0</Description>
     <PackageReleaseNotes>Afx.RabbitMQ for .NET Standard 2.0</PackageReleaseNotes>
-    <Version>3.5.0</Version>
+    <Version>3.5.1</Version>
     <Copyright>jerrylai@aliyun.com</Copyright>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>

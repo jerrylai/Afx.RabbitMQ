@@ -368,7 +368,7 @@ namespace Afx.RabbitMQ
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-                if(headers != null) foreach(KeyValuePair<string, object> kv in headers) props.Headers.Add(kv.Key, kv.Value);
+                if(headers != null) foreach(KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
                 ph.Channel.BasicPublish(exchange, routingKey ?? string.Empty, props, body);
                 //result = ph.Channel.WaitForConfirms();
             }
@@ -427,7 +427,7 @@ namespace Afx.RabbitMQ
                     props.ContentType = contentType;
                     props.ContentEncoding = "utf-8";
                     if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-                    if (headers != null) foreach (KeyValuePair<string, object> kv in headers) props.Headers.Add(kv.Key, kv.Value);
+                    if (headers != null) foreach (KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
                     ps.Add(exchange, routingKey ?? string.Empty, true, props, body);
                 }
                 ps.Publish();
