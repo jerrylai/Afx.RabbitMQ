@@ -2,13 +2,6 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
-#if NETCOREAPP || NETSTANDARD
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-#else
-using Newtonsoft.Json;
-#endif
 
 namespace Afx.RabbitMQ
 {
@@ -35,20 +28,6 @@ namespace Afx.RabbitMQ
     /// </summary>
     public interface IMQPool : IDisposable
     {
-#if NETCOREAPP || NETSTANDARD
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="jsonSerializerOptions"></param>
-        void SetJsonOptions(JsonSerializerOptions jsonSerializerOptions);
-#else
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="jsonSerializerOptions"></param>
-        void SetJsonOptions(JsonSerializerSettings jsonSerializerOptions);
-#endif
-        
         /// <summary>
         /// Returns true if the connection is still in a state where it can be used. Identical
         /// to checking if RabbitMQ.Client.IConnection.CloseReason equal null.
@@ -113,10 +92,9 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null,
-            string exchange = "amq.direct", bool persistent = false, IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            string exchange = "amq.direct", bool persistent = false, IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 发布消息
@@ -127,10 +105,9 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
         bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 批量发布消息
@@ -142,10 +119,9 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 发布消息
@@ -156,10 +132,9 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns></returns>
         bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -171,10 +146,9 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -185,10 +159,9 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 批量发布延迟消息
@@ -200,10 +173,9 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         /// <summary>
         /// 发布延迟消息
@@ -214,10 +186,9 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
-        /// <param name="serialize">自定义序列化</param>
         /// <returns>是否发生成功</returns>
         bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
-            IDictionary<string, object> headers = null, Func<T, ReadOnlyMemory<byte>> serialize = null);
+            IDictionary<string, object> headers = null);
 
         #endregion
 
@@ -229,8 +200,7 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         /// <param name="autoAck">是否自动确认</param>
-        /// <param name="deserialize">自定义反序列化</param>
-        void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false, Func<ReadOnlyMemory<byte>, T> deserialize = null);
+        void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false);
 
         /// <summary>
         /// 异步消费消息
@@ -239,8 +209,7 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         /// <param name="autoAck">是否自动确认</param>
-        /// <param name="deserialize">自定义反序列化</param>
-        void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, Func<ReadOnlyMemory<byte>, T> deserialize = null);
+        void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false);
     #endregion
     }
 }

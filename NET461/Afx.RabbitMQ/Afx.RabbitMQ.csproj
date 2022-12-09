@@ -32,12 +32,6 @@
     <DocumentationFile>bin\Afx.RabbitMQ.xml</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Diagnostics.Tracing.EventSource, Version=6.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\..\packages\Microsoft.Diagnostics.Tracing.EventSource.Redist.6.0.0\lib\net461\Microsoft.Diagnostics.Tracing.EventSource.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="RabbitMQ.Client, Version=6.0.0.0, Culture=neutral, PublicKeyToken=89e7d7c5feba84ce, processorArchitecture=MSIL">
       <HintPath>..\..\packages\RabbitMQ.Client.6.4.0\lib\net461\RabbitMQ.Client.dll</HintPath>
     </Reference>
@@ -71,14 +65,14 @@
     <Compile Include="..\..\src\Afx.RabbitMQ\ExchangeConfig.cs">
       <Link>ExchangeConfig.cs</Link>
     </Compile>
+    <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IJsonSerialize.cs">
+      <Link>Interfaces\IJsonSerialize.cs</Link>
+    </Compile>
     <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IMQConfig.cs">
       <Link>Interfaces\IMQConfig.cs</Link>
     </Compile>
     <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IMQPool.cs">
       <Link>Interfaces\IMQPool.cs</Link>
-    </Compile>
-    <Compile Include="..\..\src\Afx.RabbitMQ\JsonUtils.cs">
-      <Link>JsonUtils.cs</Link>
     </Compile>
     <Compile Include="..\..\src\Afx.RabbitMQ\MQConfig.cs">
       <Link>MQConfig.cs</Link>

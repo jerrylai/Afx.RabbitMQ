@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <Description>Afx.RabbitMQ for .NET 6.0</Description>
     <PackageReleaseNotes>Afx.RabbitMQ for .NET 6.0</PackageReleaseNotes>
-    <Version>3.5.1</Version>
+    <Version>3.6.0</Version>
     <Copyright>jerrylai@aliyun.com</Copyright>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
@@ -16,9 +16,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Afx.RabbitMQ\ExchangeConfig.cs" Link="ExchangeConfig.cs" />
+    <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IJsonSerialize.cs" Link="Interfaces\IJsonSerialize.cs" />
     <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IMQConfig.cs" Link="Interfaces\IMQConfig.cs" />
     <Compile Include="..\..\src\Afx.RabbitMQ\Interfaces\IMQPool.cs" Link="Interfaces\IMQPool.cs" />
-    <Compile Include="..\..\src\Afx.RabbitMQ\JsonUtils.cs" Link="JsonUtils.cs" />
     <Compile Include="..\..\src\Afx.RabbitMQ\MQConfig.cs" Link="MQConfig.cs" />
     <Compile Include="..\..\src\Afx.RabbitMQ\MQPool.cs" Link="MQPool.cs" />
     <Compile Include="..\..\src\Afx.RabbitMQ\PubMsgConfig.cs" Link="PubMsgConfig.cs" />
@@ -32,14 +32,10 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="RabbitMQ.Client" Version="6.4.0" />
-    <PackageReference Include="System.Text.Json" Version="6.0.7" />
   </ItemGroup>
   <ItemGroup>
     <None Update="MQ.Config.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Interfaces\" />
   </ItemGroup>
 </Project>

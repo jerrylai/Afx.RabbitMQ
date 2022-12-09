@@ -278,6 +278,7 @@ namespace Afx.RabbitMQ
             this.exchangeList = null;
             this.queueList = null;
             this.pubMsgDic = null;
+            this.subMsgDic = null;
         }
     }
 }
