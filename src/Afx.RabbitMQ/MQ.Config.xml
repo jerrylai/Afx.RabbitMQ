@@ -13,10 +13,10 @@
             <BindArguments key="1" value="1" />
         </Key>
     </Queue>
-    <PubMsg>
+    <Pub>
         <Key name="TestDto" routingKey="afx.test.webapi" delayRoutingKey="" exchange="afx.test" isRoutingKeyParam="false" />
-    </PubMsg>
-    <SubMsg>
+    </Pub>
+    <Sub>
         <Key name="TestDto" queue="afx.test.webapi" isQueueParam="false" />
-    </SubMsg>
+    </Sub>
 </xml>

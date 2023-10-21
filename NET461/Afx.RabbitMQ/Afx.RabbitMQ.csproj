@@ -80,13 +80,13 @@
     <Compile Include="..\..\src\Afx.RabbitMQ\MQPool.cs">
       <Link>MQPool.cs</Link>
     </Compile>
-    <Compile Include="..\..\src\Afx.RabbitMQ\PubMsgConfig.cs">
+    <Compile Include="..\..\src\Afx.RabbitMQ\PubConfig.cs">
       <Link>PubMsgConfig.cs</Link>
     </Compile>
     <Compile Include="..\..\src\Afx.RabbitMQ\QueueConfig.cs">
       <Link>QueueConfig.cs</Link>
     </Compile>
-    <Compile Include="..\..\src\Afx.RabbitMQ\SubMsgConfig.cs">
+    <Compile Include="..\..\src\Afx.RabbitMQ\SubConfig.cs">
       <Link>SubMsgConfig.cs</Link>
     </Compile>
     <Compile Include="..\..\src\Assembly.cs">

@@ -293,12 +293,9 @@ namespace Afx.RabbitMQ
             if (msg == null) throw new ArgumentNullException(nameof(msg));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
-            bool result = true;
-            string contentType = "application/octet-stream";
-            var body = Serialize<T>(msg, out contentType);
+            var body = Serialize<T>(msg, out var contentType);
             using (var ph = GetPublishChannel())
             {
-                //ph.Channel.ConfirmSelect();
                 IBasicProperties props = ph.Channel.CreateBasicProperties();
                 props.Persistent = persistent;
                 props.ContentType = contentType;
@@ -306,10 +303,9 @@ namespace Afx.RabbitMQ
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
                 if(headers != null) foreach(KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
                 ph.Channel.BasicPublish(exchange, routingKey ?? string.Empty, props, body);
-                //result = ph.Channel.WaitForConfirms();
             }
 
-            return result;
+            return true;
         }
 
         /// <summary>
@@ -322,7 +318,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+        public virtual bool Publish<T>(T msg, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
             IDictionary<string, object> headers = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -347,15 +343,12 @@ namespace Afx.RabbitMQ
             if (msgs.Count == 0) return true;
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
-            bool result = true;
-            string contentType = "application/octet-stream";
             using (var ph = GetPublishChannel())
             {
-                //ph.Channel.ConfirmSelect();
                 var ps = ph.Channel.CreateBasicPublishBatch();
                 foreach (var m in msgs)
                 {
-                    var body = this.Serialize<T>(m, out contentType);
+                    var body = this.Serialize<T>(m, out var contentType);
                     IBasicProperties props = ph.Channel.CreateBasicProperties();
                     props.Persistent = persistent;
                     props.ContentType = contentType;
@@ -365,9 +358,8 @@ namespace Afx.RabbitMQ
                     ps.Add(exchange, routingKey ?? string.Empty, true, props, body);
                 }
                 ps.Publish();
-                // result = ph.Channel.WaitForConfirms();
             }
-            return result;
+            return true;
         }
 
         /// <summary>
@@ -380,7 +372,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+        public virtual bool Publish<T>(List<T> msgs, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
             IDictionary<string, object> headers = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -416,7 +408,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+        public virtual bool PublishDelay<T>(T msg, PubConfig config, TimeSpan delay, bool persistent = false, 
             IDictionary<string, object> headers = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -455,7 +447,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+        public virtual bool PublishDelay<T>(List<T> msgs, PubConfig config, TimeSpan delay, bool persistent = false, 
             IDictionary<string, object> headers = null)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
@@ -535,7 +527,8 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         /// <param name="autoAck">是否自动确认</param>
-        public virtual void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false)
+        /// <param name="newTask">是否使用新线程</param>
+        public virtual void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, bool newTask = false)
         {
             if(!this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is false, no support！");
             if (hander == null) throw new ArgumentNullException(nameof(hander));
@@ -545,7 +538,7 @@ namespace Afx.RabbitMQ
             {
                 channel.BasicQos(0, 1, false);
                 var eventingBasicConsumer = new AsyncEventingBasicConsumer(channel);
-                var consumer = new AsyncConsumer<T>(this, eventingBasicConsumer, hander, autoAck);
+                var consumer = new AsyncConsumer<T>(this, eventingBasicConsumer, hander, autoAck, newTask);
                 this.consumerList.Add(consumer);
                 eventingBasicConsumer.Received += consumer.Handler;
                 channel.BasicConsume(queue, autoAck, eventingBasicConsumer);
@@ -719,17 +712,32 @@ namespace Afx.RabbitMQ
             private AsyncEventingBasicConsumer consumer;
             private AsyncSubscribeHander<T> hander;
             private bool autoAck;
+            private bool newTask;
 
-            public AsyncConsumer(MQPool pool, AsyncEventingBasicConsumer consumer, AsyncSubscribeHander<T> hander, bool autoAck)
+            public AsyncConsumer(MQPool pool, AsyncEventingBasicConsumer consumer, AsyncSubscribeHander<T> hander, bool autoAck, bool newTask = false)
                 : base(pool)
             {
                 this.consumer = consumer;
                 this.hander = hander;
                 this.autoAck = autoAck;
+                this.newTask = newTask;
             }
 
             public async Task Handler(object sender, BasicDeliverEventArgs e)
             {
+                if (this.newTask)
+                {
+                    var t = Task.Factory.StartNew(this.Exec, e);
+                }
+                else
+                {
+                    await this.Exec(e);
+                }
+            }
+
+            private async Task Exec(object o)
+            {
+                BasicDeliverEventArgs e = o as BasicDeliverEventArgs;
                 bool handerOk = false;
                 try
                 {

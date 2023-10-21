@@ -13,8 +13,8 @@ namespace Afx.RabbitMQ
     {
         private List<ExchangeConfig> exchangeList;
         private List<QueueConfig> queueList;
-        private Dictionary<string, PubMsgConfig> pubMsgDic;
-        private Dictionary<string, SubMsgConfig> subMsgDic;
+        private Dictionary<string, PubConfig> pubMsgDic;
+        private Dictionary<string, SubConfig> subMsgDic;
 
         /// <summary>
         /// mq配置
@@ -40,17 +40,18 @@ namespace Afx.RabbitMQ
 
                     if(xmlDocument.DocumentElement == null) throw new ArgumentException($"MQ config is null!");
 
-                    this.LoadExchange(xmlDocument.DocumentElement);
-                    this.LosdQueue(xmlDocument.DocumentElement);
-                    this.LoadPubMsg(xmlDocument.DocumentElement);
-                    this.LoadSubMsg(xmlDocument.DocumentElement);
+                    this.LoadExchangeConfig(xmlDocument.DocumentElement);
+                    this.LosdQueueConfig(xmlDocument.DocumentElement);
+                    this.LoadPubConfig(xmlDocument.DocumentElement);
+                    this.LoadSubConfig(xmlDocument.DocumentElement);
                 }
             }
         }
 
-        private void LoadExchange(XmlElement rootElement)
+        private void LoadExchangeConfig(XmlElement rootElement)
         {
             var nodes = rootElement.SelectNodes("Exchange/Key");
+            if (nodes == null || nodes.Count == 0) nodes = rootElement.SelectNodes("ExchangeConfig/Key");
             exchangeList = new List<ExchangeConfig>(nodes.Count);
             foreach (XmlNode node in nodes)
             {
@@ -91,9 +92,10 @@ namespace Afx.RabbitMQ
             exchangeList.TrimExcess();
         }
 
-        private void LosdQueue(XmlElement rootElement)
+        private void LosdQueueConfig(XmlElement rootElement)
         {
             var nodes = rootElement.SelectNodes("Queue/Key");
+            if (nodes == null || nodes.Count == 0) nodes = rootElement.SelectNodes("QueueConfig/Key");
             queueList = new List<QueueConfig>(nodes.Count);
             foreach (XmlNode node in nodes)
             {
@@ -171,10 +173,12 @@ namespace Afx.RabbitMQ
             queueList.TrimExcess();
         }
 
-        private void LoadPubMsg(XmlElement rootElement)
+        private void LoadPubConfig(XmlElement rootElement)
         {
-            var nodes = rootElement.SelectNodes("PubMsg/Key");
-            pubMsgDic = new Dictionary<string, PubMsgConfig>(nodes.Count);
+            var nodes = rootElement.SelectNodes("Pub/Key");
+            if(nodes == null || nodes.Count == 0) nodes = rootElement.SelectNodes("PubMsg/Key");
+            if (nodes == null || nodes.Count == 0) nodes = rootElement.SelectNodes("PubConfig/Key");
+            pubMsgDic = new Dictionary<string, PubConfig>(nodes.Count);
             foreach (XmlNode node in nodes)
             {
                 if (node is XmlElement)
@@ -184,7 +188,7 @@ namespace Afx.RabbitMQ
                     if (string.IsNullOrEmpty(s)) throw new ArgumentNullException("PubMsg config is null!");
                     if (pubMsgDic.ContainsKey(s)) throw new ArgumentException($"PubMsg config ({s}) is repeat！");
 
-                    var m = new PubMsgConfig() { Name = s };
+                    var m = new PubConfig() { Name = s };
                     s = element.GetAttribute("routingKey");
                     m.RoutingKey = s ?? string.Empty;
 
@@ -202,10 +206,12 @@ namespace Afx.RabbitMQ
             }
         }
 
-        private void LoadSubMsg(XmlElement rootElement)
+        private void LoadSubConfig(XmlElement rootElement)
         {
-            var nodes = rootElement.SelectNodes("SubMsg/Key");
-            subMsgDic = new Dictionary<string, SubMsgConfig>(nodes.Count);
+            var nodes = rootElement.SelectNodes("Sub/Key");
+            if (nodes == null || nodes.Count == 0) nodes = rootElement.SelectNodes("SubMsg/Key");
+            if (nodes == null || nodes.Count == 0) nodes = rootElement.SelectNodes("SubConfig/Key");
+            subMsgDic = new Dictionary<string, SubConfig>(nodes.Count);
             foreach (XmlNode node in nodes)
             {
                 if (node is XmlElement)
@@ -215,7 +221,7 @@ namespace Afx.RabbitMQ
                     if (string.IsNullOrEmpty(s)) throw new ArgumentNullException("SubMsg config is null!");
                     if (subMsgDic.ContainsKey(s)) throw new ArgumentException($"SubMsg config ({s}) is repeat！");
 
-                    var m = new SubMsgConfig() { Name = s };
+                    var m = new SubConfig() { Name = s };
                     s = element.GetAttribute("queue");
                     if (string.IsNullOrEmpty(s)) throw new ArgumentNullException($"SubMsg ({s}) queue is null!");
                     m.Queue = s;
@@ -250,10 +256,10 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <param name="name">配置name</param>
         /// <returns></returns>
-        public PubMsgConfig GetPubMsgConfig(string name)
+        public PubConfig GetPubConfig(string name)
         {
             if (string.IsNullOrEmpty(name)) throw new ArgumentNullException(nameof(name));
-            PubMsgConfig m = null;
+            PubConfig m = null;
 
             return pubMsgDic.TryGetValue(name, out m) ? m.Copy() : null;
         }
@@ -262,10 +268,10 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <param name="name"></param>
         /// <returns></returns>
-        public SubMsgConfig GetSubMsgConfig(string name)
+        public SubConfig GetSubConfig(string name)
         {
             if (string.IsNullOrEmpty(name)) throw new ArgumentNullException(nameof(name));
-            SubMsgConfig m = null;
+            SubConfig m = null;
 
             return subMsgDic.TryGetValue(name, out m) ? m.Copy() : null;
         }

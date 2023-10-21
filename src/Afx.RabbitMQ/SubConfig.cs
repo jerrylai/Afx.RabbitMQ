@@ -7,7 +7,7 @@ namespace Afx.RabbitMQ
     /// <summary>
     /// 消费配置
     /// </summary>
-    public class SubMsgConfig
+    public class SubConfig
     {
         /// <summary>
         /// 消息名称
@@ -26,9 +26,9 @@ namespace Afx.RabbitMQ
         /// 复制
         /// </summary>
         /// <returns></returns>
-        public SubMsgConfig Copy()
+        public SubConfig Copy()
         {
-            return new SubMsgConfig()
+            return new SubConfig()
             {
                 Name = this.Name,
                 Queue = this.Queue,

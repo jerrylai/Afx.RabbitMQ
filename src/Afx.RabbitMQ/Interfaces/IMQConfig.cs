@@ -24,12 +24,12 @@ namespace Afx.RabbitMQ
         /// </summary>
         /// <param name="name"></param>
         /// <returns></returns>
-        PubMsgConfig GetPubMsgConfig(string name);
+        PubConfig GetPubConfig(string name);
         /// <summary>
         /// 获取配置消费者
         /// </summary>
         /// <param name="name"></param>
         /// <returns></returns>
-        SubMsgConfig GetSubMsgConfig(string name);
+        SubConfig GetSubConfig(string name);
     }
 }

@@ -106,7 +106,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns></returns>
-        bool Publish<T>(T msg, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+        bool Publish<T>(T msg, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
             IDictionary<string, object> headers = null);
 
         /// <summary>
@@ -133,7 +133,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns></returns>
-        bool Publish<T>(List<T> msgs, PubMsgConfig config, TimeSpan? expire = null, bool persistent = false, 
+        bool Publish<T>(List<T> msgs, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
             IDictionary<string, object> headers = null);
 
         /// <summary>
@@ -160,7 +160,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns>是否发生成功</returns>
-        bool PublishDelay<T>(T msg, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+        bool PublishDelay<T>(T msg, PubConfig config, TimeSpan delay, bool persistent = false, 
             IDictionary<string, object> headers = null);
 
         /// <summary>
@@ -187,7 +187,7 @@ namespace Afx.RabbitMQ
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
         /// <returns>是否发生成功</returns>
-        bool PublishDelay<T>(List<T> msgs, PubMsgConfig config, TimeSpan delay, bool persistent = false, 
+        bool PublishDelay<T>(List<T> msgs, PubConfig config, TimeSpan delay, bool persistent = false, 
             IDictionary<string, object> headers = null);
 
         #endregion
@@ -209,7 +209,8 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         /// <param name="autoAck">是否自动确认</param>
-        void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false);
+        /// <param name="newTask">是否使用新线程</param>
+        void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, bool newTask = false);
     #endregion
     }
 }

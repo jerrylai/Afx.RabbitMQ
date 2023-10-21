@@ -7,7 +7,7 @@ namespace Afx.RabbitMQ
     /// <summary>
     /// 生产消息配置
     /// </summary>
-    public class PubMsgConfig
+    public class PubConfig
     {
         /// <summary>
         /// 消息名称
@@ -35,9 +35,9 @@ namespace Afx.RabbitMQ
         /// 复制
         /// </summary>
         /// <returns></returns>
-        public PubMsgConfig Copy()
+        public PubConfig Copy()
         {
-            return new PubMsgConfig()
+            return new PubConfig()
             {
                 Name = this.Name,
                 Exchange = this.Exchange,
