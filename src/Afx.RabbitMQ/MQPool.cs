@@ -1,11 +1,11 @@
-﻿using System;
+﻿using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Net.Mime;
 using System.Text;
 using System.Threading.Tasks;
-
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
 
 
 namespace Afx.RabbitMQ
@@ -15,34 +15,32 @@ namespace Afx.RabbitMQ
     /// </summary>
     public class MQPool : IMQPool
     {
-        private object lockCreate = new object();
-        private IAsyncConnectionFactory m_connectionFactory;
-        private IConnection m_connection;
+        private IConnectionFactory connectionFactory;
+        private IConnection connection;
         private string clientName { get; set; }
         private IJsonSerialize jsonSerialize;
 
-        private IModel m_subChannel;
-        private object lockSubChannel = new object();
+        private IChannel subChannel;
         private List<ConsumerBase> consumerList = new List<ConsumerBase>();
 
         private readonly int maxPool = 3;
-        private ConcurrentQueue<IModel> m_publishChannelQueue = new ConcurrentQueue<IModel>();
+        private ConcurrentQueue<IChannel> publishChannelQueue = new ConcurrentQueue<IChannel>();
       
 
         /// <summary>
         /// Returns true if the connection is still in a state where it can be used. Identical
         /// to checking if RabbitMQ.Client.IConnection.CloseReason equal null.
         /// </summary>
-        public bool IsOpen { get { return this.m_connection?.IsOpen ?? false; } }
+        public bool IsOpen { get { return this.connection?.IsOpen ?? false; } }
         /// <summary>
         /// The current heartbeat setting for this connection (System.TimeSpan.Zero for disabled).
         /// </summary>
-        public TimeSpan Heartbeat { get { return  this.m_connection?.Heartbeat ?? TimeSpan.Zero; } }
+        public TimeSpan Heartbeat { get { return  this.connection?.Heartbeat ?? TimeSpan.Zero; } }
 
         /// <summary>
         /// 异常回调
         /// </summary>
-        public Action<Exception, IDictionary<string, object>, string> CallbackException;
+        public Func<Exception, IDictionary<string, object>, string, Task> CallbackException;
 
         /// <summary>
         /// mq应用池
@@ -68,66 +66,50 @@ namespace Afx.RabbitMQ
             if (networkRecoveryInterval <= 0) throw new ArgumentException(nameof(networkRecoveryInterval));
             this.jsonSerialize = jsonSerialize;
             this.clientName = clientName ?? "Afx.RabbitMQ";
-            this.m_connectionFactory = new ConnectionFactory()
+            this.connectionFactory = new ConnectionFactory()
             {
                 HostName = hostName,
                 Port = port,
                 UserName = userName,
                 Password = password,
                 VirtualHost = virtualHost,
-                DispatchConsumersAsync = consumersAsync,
                 AutomaticRecoveryEnabled = true,
+                TopologyRecoveryEnabled = true,
+                RequestedHeartbeat = TimeSpan.FromSeconds(30),
                 NetworkRecoveryInterval = TimeSpan.FromSeconds(networkRecoveryInterval)
             };
         }
 
-        private IConnection GetConnection()
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <returns></returns>
+        public virtual async Task Open()
         {
-            if (this.m_connection != null) return this.m_connection;
-            lock (lockCreate)
-            {
-                if (m_connection == null)
-                {
-                    m_connection = this.m_connectionFactory.CreateConnection(this.clientName);
-                    m_connection.CallbackException += conCallbackException;
-                }
-            }
-            return this.m_connection;
+            if (connection != null) return;
+
+            connection = await this.connectionFactory.CreateConnectionAsync(this.clientName);
+            connection.CallbackExceptionAsync += conCallbackException;
         }
 
-        private void conCallbackException(object sender, CallbackExceptionEventArgs e)
+        private async Task conCallbackException(object sender, CallbackExceptionEventArgs e)
         {
             if (CallbackException != null)
-                CallbackException(e.Exception, e.Detail, string.Empty);
+               await CallbackException(e.Exception, e.Detail, string.Empty);
         }
 
-        private IModel GetSubscribeChannel()
+        private async Task<PublishChannel> GetPublishChannel()
         {
-            if (m_subChannel != null) return m_subChannel;
-            var con = GetConnection();
-            lock (lockCreate)
-            {
-                if (m_subChannel == null)
-                {
-                    m_subChannel = con.CreateModel();
-                }
-            }
-
-            return m_subChannel;
-        }
-
-        private PublishChannel GetPublishChannel()
-        {
-            IModel ch = null;
-            while (this.m_publishChannelQueue.TryDequeue(out ch) && !ch.IsOpen)
+            IChannel ch = null;
+            while (this.publishChannelQueue.TryDequeue(out ch) && !ch.IsOpen)
             {
                 ch.Dispose();
                 ch = null;
             }
             if (ch == null)
             {
-                var con = GetConnection();
-                ch = con.CreateModel();
+                if (this.connection == null) await this.Open();
+                ch = await connection.CreateChannelAsync();
             }
 
             return new PublishChannel(this, ch);
@@ -142,13 +124,13 @@ namespace Afx.RabbitMQ
         /// <param name="durable">是否持久化, 默认true</param>
         /// <param name="autoDelete">当已经没有消费者时，服务器是否可以删除该Exchange, 默认false</param>
         /// <param name="arguments"></param>
-        public virtual void ExchangeDeclare(string exchange = "amq.direct", string type = "direct", bool durable = true, bool autoDelete = false, IDictionary<string, object> arguments = null)
+        public virtual async Task ExchangeDeclare(string exchange = "amq.direct", string type = "direct", bool durable = true, bool autoDelete = false, IDictionary<string, object> arguments = null)
         {
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (string.IsNullOrEmpty(type)) throw new ArgumentNullException(nameof(type));
-            using (var ph = GetPublishChannel())
+           await using (var ph = await GetPublishChannel())
             {
-                ph.Channel.ExchangeDeclare(exchange, type, durable, autoDelete, arguments);
+               await ph.Channel.ExchangeDeclareAsync(exchange, type, durable, autoDelete, arguments);
             }
         }
 
@@ -156,17 +138,17 @@ namespace Afx.RabbitMQ
         /// ExchangeDeclare
         /// </summary>
         /// <param name="config"></param>
-        public virtual void ExchangeDeclare(ExchangeConfig config)
+        public virtual async Task ExchangeDeclare(ExchangeConfig config)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            this.ExchangeDeclare(config.Exchange, config.Type, config.Durable, config.AutoDelete, config.Arguments);
+            await this.ExchangeDeclare(config.Exchange, config.Type, config.Durable, config.AutoDelete, config.Arguments);
         }
 
         /// <summary>
         /// 批量ExchangeDeclare
         /// </summary>
         /// <param name="configs"></param>
-        public virtual void ExchangeDeclare(IEnumerable<ExchangeConfig> configs)
+        public virtual async Task ExchangeDeclare(IEnumerable<ExchangeConfig> configs)
         {
             if (configs == null) throw new ArgumentNullException(nameof(configs));
             foreach (var item in configs)
@@ -175,11 +157,11 @@ namespace Afx.RabbitMQ
                 if (string.IsNullOrEmpty(item.Exchange)) throw new ArgumentNullException($"{nameof(configs)} item.{nameof(item.Exchange)} is null!");
                 if (string.IsNullOrEmpty(item.Type)) throw new ArgumentNullException($"{nameof(configs)} item.{nameof(item.Type)} is null!");
             }
-            using (var ph = GetPublishChannel())
+            await using (var ph = await GetPublishChannel())
             {
                 foreach (var item in configs)
                 {
-                    ph.Channel.ExchangeDeclare(item.Exchange, item.Type, item.Durable, item.AutoDelete, item.Arguments);
+                   await  ph.Channel.ExchangeDeclareAsync(item.Exchange, item.Type, item.Durable, item.AutoDelete, item.Arguments);
                 }
             }
         }
@@ -188,23 +170,23 @@ namespace Afx.RabbitMQ
         /// QueueDeclare
         /// </summary>
         /// <param name="config"></param>
-        public virtual void QueueDeclare(QueueConfig config)
+        public virtual async Task QueueDeclare(QueueConfig config)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (string.IsNullOrEmpty(config.Queue)) throw new ArgumentNullException(nameof(config.Queue));
             if (string.IsNullOrEmpty(config.Exchange)) throw new ArgumentNullException(nameof(config.Exchange));
-            using (var ph = GetPublishChannel())
+           await using (var ph = await GetPublishChannel())
             {
-                 ph.Channel.QueueDeclare(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
-                ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
+                await ph.Channel.QueueDeclareAsync(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
+                await ph.Channel.QueueBindAsync(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
                 if(!string.IsNullOrEmpty(config.DelayQueue) && config.Queue != config.DelayQueue 
                     && (config.RoutingKey != config.DelayRoutingKey || (string.IsNullOrEmpty(config.DelayRoutingKey) && string.IsNullOrEmpty(config.RoutingKey))))
                 {
                     Dictionary<string, object> dic = new Dictionary<string, object>(2);
                     dic.Add("x-dead-letter-exchange", config.Exchange);
                     dic.Add("x-dead-letter-routing-key", config.RoutingKey ?? string.Empty);
-                    ph.Channel.QueueDeclare(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
-                    ph.Channel.QueueBind(config.DelayQueue, config.Exchange, config.DelayRoutingKey ?? string.Empty, null);
+                    await ph.Channel.QueueDeclareAsync(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
+                    await ph.Channel.QueueBindAsync(config.DelayQueue, config.Exchange, config.DelayRoutingKey ?? string.Empty, null);
                 }
             }
         }
@@ -213,7 +195,7 @@ namespace Afx.RabbitMQ
         /// 批量QueueDeclare
         /// </summary>
         /// <param name="queues"></param>
-        public virtual void QueueDeclare(IEnumerable<QueueConfig> queues)
+        public virtual async Task QueueDeclare(IEnumerable<QueueConfig> queues)
         {
             if (queues == null) throw new ArgumentNullException(nameof(queues));
             foreach (var item in queues)
@@ -222,20 +204,20 @@ namespace Afx.RabbitMQ
                 if (string.IsNullOrEmpty(item.Queue)) throw new ArgumentNullException($"{nameof(queues)} item.{nameof(item.Queue)} is null!");
                 if (string.IsNullOrEmpty(item.Exchange)) throw new ArgumentNullException($"{nameof(queues)} item.{nameof(item.Exchange)} is null!");
             }
-            using (var ph = GetPublishChannel())
+            await using (var ph = await GetPublishChannel())
             {
                 foreach (var config in queues)
                 {
-                    var ok = ph.Channel.QueueDeclare(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
-                    ph.Channel.QueueBind(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
+                    var ok = await ph.Channel.QueueDeclareAsync(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
+                    await ph.Channel.QueueBindAsync(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
                     if (!string.IsNullOrEmpty(config.DelayQueue) && config.Queue != config.DelayQueue
                     && (config.RoutingKey != config.DelayRoutingKey || (string.IsNullOrEmpty(config.DelayRoutingKey) && string.IsNullOrEmpty(config.RoutingKey))))
                     {
                         Dictionary<string, object> dic = new Dictionary<string, object>(2);
                         dic.Add("x-dead-letter-exchange", config.Exchange);
                         dic.Add("x-dead-letter-routing-key", config.RoutingKey ?? string.Empty);
-                        ok = ph.Channel.QueueDeclare(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
-                        ph.Channel.QueueBind(config.DelayQueue, config.Exchange, config.DelayRoutingKey ?? string.Empty, null);
+                        ok = await ph.Channel.QueueDeclareAsync(config.DelayQueue, config.Durable, config.Exclusive, config.AutoDelete, dic);
+                        await ph.Channel.QueueBindAsync(config.DelayQueue, config.Exchange, config.DelayRoutingKey ?? string.Empty, null);
                     }
                 }
             }
@@ -286,23 +268,24 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool Publish<T>(T msg, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false,
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> Publish<T>(T msg, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false,
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msg == null) throw new ArgumentNullException(nameof(msg));
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             var body = Serialize<T>(msg, out var contentType);
-            using (var ph = GetPublishChannel())
+           await using (var ph = await GetPublishChannel())
             {
-                IBasicProperties props = ph.Channel.CreateBasicProperties();
+                var props = new BasicProperties();
                 props.Persistent = persistent;
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
                 if(headers != null) foreach(KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
-                ph.Channel.BasicPublish(exchange, routingKey ?? string.Empty, props, body);
+                await ph.Channel.BasicPublishAsync(exchange, routingKey ?? string.Empty, mandatory, props, body);
             }
 
             return true;
@@ -317,12 +300,13 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(T msg, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> Publish<T>(T msg, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.Publish(msg, config.RoutingKey, expire, config.Exchange, persistent, headers);
+            return await this.Publish(msg, config.RoutingKey, expire, config.Exchange, persistent, headers, mandatory);
         }
 
         /// <summary>
@@ -335,29 +319,29 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
-            using (var ph = GetPublishChannel())
+            await using (var ph = await GetPublishChannel())
             {
-                var ps = ph.Channel.CreateBasicPublishBatch();
+                var props = new BasicProperties();
+                props.Persistent = persistent;
+                props.ContentEncoding = "utf-8";
+                if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
+                if (headers != null) foreach (KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
+
                 foreach (var m in msgs)
                 {
-                    var body = this.Serialize<T>(m, out var contentType);
-                    IBasicProperties props = ph.Channel.CreateBasicProperties();
-                    props.Persistent = persistent;
+                    var body = Serialize<T>(m, out var contentType);
                     props.ContentType = contentType;
-                    props.ContentEncoding = "utf-8";
-                    if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-                    if (headers != null) foreach (KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
-                    ps.Add(exchange, routingKey ?? string.Empty, true, props, body);
+                    await ph.Channel.BasicPublishAsync(exchange, routingKey ?? string.Empty, mandatory, props, body);
                 }
-                ps.Publish();
             }
             return true;
         }
@@ -371,12 +355,13 @@ namespace Afx.RabbitMQ
         /// <param name="expire">消息过期时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns></returns>
-        public virtual bool Publish<T>(List<T> msgs, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> Publish<T>(List<T> msgs, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            return this.Publish(msgs, config.RoutingKey, expire, config.Exchange, persistent, headers);
+            return await this.Publish(msgs, config.RoutingKey, expire, config.Exchange, persistent, headers, mandatory);
         }
 
         /// <summary>
@@ -389,13 +374,14 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
-            return this.Publish(msg, delayRoutingKey, delay, exchange, persistent, headers);
+            return await this.Publish(msg, delayRoutingKey, delay, exchange, persistent, headers, mandatory);
         }
 
         /// <summary>
@@ -407,13 +393,14 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(T msg, PubConfig config, TimeSpan delay, bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> PublishDelay<T>(T msg, PubConfig config, TimeSpan delay, bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
 
-            return this.Publish(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, headers);
+            return await this.Publish(msg, config.DelayRoutingKey, delay, config.Exchange, persistent, headers, mandatory);
         }
 
         /// <summary>
@@ -426,15 +413,16 @@ namespace Afx.RabbitMQ
         /// <param name="exchange">exchange</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
-            return this.Publish(msgs, delayRoutingKey, delay, exchange, persistent, headers);
+            return await this.Publish(msgs, delayRoutingKey, delay, exchange, persistent, headers, mandatory);
         }
 
         /// <summary>
@@ -446,16 +434,17 @@ namespace Afx.RabbitMQ
         /// <param name="delay">延迟时间</param>
         /// <param name="persistent">消息是否持久化</param>
         /// <param name="headers">headers</param>
+        /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual bool PublishDelay<T>(List<T> msgs, PubConfig config, TimeSpan delay, bool persistent = false, 
-            IDictionary<string, object> headers = null)
+        public virtual async Task<bool> PublishDelay<T>(List<T> msgs, PubConfig config, TimeSpan delay, bool persistent = false, 
+            IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
             if (msgs.Count == 0) return true;
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
 
-            return this.Publish(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, headers);
+            return await this.Publish(msgs, config.DelayRoutingKey, delay, config.Exchange, persistent, headers, mandatory);
         }
 
         #endregion
@@ -503,108 +492,79 @@ namespace Afx.RabbitMQ
         /// <param name="hander"></param>
         /// <param name="queue"></param>
         /// <param name="autoAck">是否自动确认</param>
-        public virtual void Subscribe<T>(SubscribeHander<T> hander, string queue, bool autoAck = false)
-        {
-            if (this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is true, no support！");
-            if (hander == null) throw new ArgumentNullException(nameof(hander));
-            if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
-            var channel = GetSubscribeChannel();
-            lock (lockSubChannel)
-            {
-                channel.BasicQos(0, 1, false);
-                var eventingBasicConsumer = new EventingBasicConsumer(channel);
-                var consumer = new Consumer<T>(this, eventingBasicConsumer, hander, autoAck);
-                this.consumerList.Add(consumer);
-                eventingBasicConsumer.Received += consumer.Handler;
-                channel.BasicConsume(queue, autoAck, eventingBasicConsumer);
-            }
-        }
-
-        /// <summary>
-        /// 消费消息
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="hander"></param>
-        /// <param name="queue"></param>
-        /// <param name="autoAck">是否自动确认</param>
         /// <param name="newTask">是否使用新线程</param>
-        public virtual void Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, bool newTask = false)
+        public virtual async Task Subscribe<T>(AsyncSubscribeHander<T> hander, string queue, bool autoAck = false, bool newTask = false)
         {
-            if(!this.m_connectionFactory.DispatchConsumersAsync) throw new InvalidOperationException("ConsumersAsync is false, no support！");
             if (hander == null) throw new ArgumentNullException(nameof(hander));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
-            var channel = GetSubscribeChannel();
-            lock (lockSubChannel)
+            if (this.subChannel == null)
             {
-                channel.BasicQos(0, 1, false);
-                var eventingBasicConsumer = new AsyncEventingBasicConsumer(channel);
-                var consumer = new AsyncConsumer<T>(this, eventingBasicConsumer, hander, autoAck, newTask);
-                this.consumerList.Add(consumer);
-                eventingBasicConsumer.Received += consumer.Handler;
-                channel.BasicConsume(queue, autoAck, eventingBasicConsumer);
+                if(this.connection == null) await this.Open();
+                this.subChannel = await this.connection.CreateChannelAsync();
             }
+            await subChannel.BasicQosAsync(0, 1, false);
+            var eventingBasicConsumer = new AsyncEventingBasicConsumer(this.subChannel);
+            var consumer = new AsyncConsumer<T>(this, eventingBasicConsumer, hander, autoAck, newTask);
+            this.consumerList.Add(consumer);
+            eventingBasicConsumer.ReceivedAsync += consumer.Handler;
+            await this.subChannel.BasicConsumeAsync(queue, autoAck, eventingBasicConsumer);
         }
 
         /// <summary>
         /// 
         /// </summary>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
-            this.Dispose(true);
+            await this.DisposeAsync(true);
         }
 
-        private object disObj = new object();
         /// <summary>
         /// 
         /// </summary>
         /// <param name="disposing"></param>
-        protected virtual void Dispose(bool disposing)
+        protected virtual async ValueTask DisposeAsync(bool disposing)
         {
             if (disposing)
             {
-                lock (this.disObj)
+                if (this.subChannel != null)
                 {
-                    if (this.m_subChannel != null)
-                    {
-                        try { if (this.m_subChannel.IsOpen) this.m_subChannel.Close(); } catch { }
-                        try { this.m_subChannel.Dispose(); } catch { }
-                    }
-                    this.m_subChannel = null;
-                    IModel model;
-                    while (this.m_publishChannelQueue != null && this.m_publishChannelQueue.TryDequeue(out model))
-                    {
-                        if (model != null)
-                        {
-                            try { if (model.IsOpen) model.Close(); } catch { }
-                            try { model.Dispose(); } catch { }
-                        }
-                    }
-                    this.m_publishChannelQueue = null;
-                    if (this.m_connection != null)
-                    {
-                        try { if (this.m_connection.IsOpen) this.m_connection.Close(); } catch { }
-                        try { this.m_connection.Dispose(); } catch { }
-                    }
-                    this.m_connection = null;
-                    this.CallbackException = null;
-                    this.lockSubChannel = null;
-
-                    if(this.consumerList != null)
-                    {
-                        foreach (var c in this.consumerList) c.Dispose();
-                        this.consumerList.Clear();
-                        this.consumerList.TrimExcess();
-                    }
-                    this.consumerList = null;
+                    try { if (this.subChannel.IsOpen) await this.subChannel.CloseAsync(); } catch { }
+                    try { await this.subChannel.DisposeAsync(); } catch { }
                 }
+                this.subChannel = null;
+                IChannel model;
+                while (this.publishChannelQueue != null && this.publishChannelQueue.TryDequeue(out model))
+                {
+                    if (model != null)
+                    {
+                        try { if (model.IsOpen) await model.CloseAsync(); } catch { }
+                        try { await model.DisposeAsync(); } catch { }
+                    }
+                }
+                this.publishChannelQueue = null;
+                if (this.connection != null)
+                {
+                    try { if (this.connection.IsOpen) await this.connection.CloseAsync(); } catch { }
+                    try { await this.connection.DisposeAsync(); } catch { }
+                }
+                this.connection = null;
+                this.CallbackException = null;
+
+                if (this.consumerList != null)
+                {
+                    foreach (var c in this.consumerList) await c.DisposeAsync();
+                    this.consumerList.Clear();
+                    this.consumerList.TrimExcess();
+                }
+                this.consumerList = null;
             }
         }
 
-        class PublishChannel : IDisposable
+        class PublishChannel : IAsyncDisposable
         {
             private MQPool pool;
-            public IModel Channel { get; private set; }
-            public PublishChannel(MQPool pool, IModel channel)
+            public IChannel Channel { get; private set; }
+            public PublishChannel(MQPool pool, IChannel channel)
             {
                 if (pool == null) throw new ArgumentNullException(nameof(pool));
                 if (channel == null) throw new ArgumentNullException(nameof(channel));
@@ -612,18 +572,18 @@ namespace Afx.RabbitMQ
                 this.Channel = channel;
             }
 
-            public void Dispose()
+            public async ValueTask DisposeAsync()
             {
                 if (this.pool != null)
                 {
-                    if (this.pool.maxPool > this.pool.m_publishChannelQueue.Count && this.Channel.IsOpen)
+                    if (this.pool.maxPool > this.pool.publishChannelQueue.Count && this.Channel.IsOpen)
                     {
-                        this.pool.m_publishChannelQueue.Enqueue(this.Channel);
+                        this.pool.publishChannelQueue.Enqueue(this.Channel);
                     }
                     else
                     {
-                        if (this.Channel.IsOpen) this.Channel.Close();
-                        this.Channel.Dispose();
+                        if (this.Channel.IsOpen) await this.Channel.CloseAsync();
+                        await this.Channel.DisposeAsync();
                     }
                 }
                 this.pool = null;
@@ -631,7 +591,7 @@ namespace Afx.RabbitMQ
             }
         }
 
-        class ConsumerBase: IDisposable
+        class ConsumerBase: IAsyncDisposable
         {
             protected MQPool pool;
 
@@ -640,70 +600,19 @@ namespace Afx.RabbitMQ
                 this.pool = pool;
             }
 
-            public virtual void Dispose(bool disposable)
+            public virtual ValueTask DisposeAsync(bool disposable)
             {
                 if (disposable)
                 {
                     this.pool = null;
                 }
+
+                return ValueTask.CompletedTask;
             }
 
-            public void Dispose()
+            public async ValueTask DisposeAsync()
             {
-                this.Dispose(true);
-            }
-        }
-
-        class Consumer<T> : ConsumerBase
-        {
-            private EventingBasicConsumer consumer;
-            private SubscribeHander<T> hander;
-            private bool autoAck;
-
-            public Consumer(MQPool pool, EventingBasicConsumer consumer, SubscribeHander<T> hander, bool autoAck)
-                : base(pool)
-            {
-                this.consumer = consumer;
-                this.hander = hander;
-                this.autoAck = autoAck;
-            }
-
-            public void Handler(object sender, BasicDeliverEventArgs e)
-            {
-                bool handerOk = false;
-                try
-                {
-                    T m = this.pool.Deserialize<T>(e.Body);
-                    if (m != null) handerOk = hander(m, e.BasicProperties?.Headers);
-                    else handerOk = true;
-                }
-                catch (Exception ex)
-                {
-                    try { this.pool.CallbackException?.Invoke(ex, null, string.Empty); }
-                    catch { }
-                }
-
-                if (!this.autoAck)
-                {
-                    if (handerOk)
-                    {
-                        consumer.Model.BasicAck(e.DeliveryTag, false);
-                    }
-                    else
-                    {
-                        consumer.Model.BasicNack(e.DeliveryTag, false, true);
-                    }
-                }
-            }
-
-           public override void Dispose(bool disposable)
-            {
-                if (disposable)
-                {
-                    this.consumer = null;
-                    this.hander = null;
-                }
-                base.Dispose(disposable);
+                await this.DisposeAsync(true);
             }
         }
 
@@ -755,23 +664,23 @@ namespace Afx.RabbitMQ
                 {
                     if (handerOk)
                     {
-                        consumer.Model.BasicAck(e.DeliveryTag, false);
+                       await consumer.Channel.BasicAckAsync(e.DeliveryTag, false);
                     }
                     else
                     {
-                        consumer.Model.BasicNack(e.DeliveryTag, false, true);
+                        await consumer.Channel.BasicNackAsync(e.DeliveryTag, false, true);
                     }
                 }
             }
 
-            public override void Dispose(bool disposable)
+            public override async ValueTask DisposeAsync(bool disposable)
             {
                 if (disposable)
                 {
                     this.consumer = null;
                     this.hander = null;
                 }
-                base.Dispose(disposable);
+                await base.DisposeAsync(disposable);
             }
         }
     }

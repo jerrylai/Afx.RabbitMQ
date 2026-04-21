@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <Description>Afx.RabbitMQ for .NET 6.0</Description>
     <PackageReleaseNotes>Afx.RabbitMQ for .NET 6.0</PackageReleaseNotes>
-    <Version>3.8.1</Version>
+    <Version>3.9.0</Version>
     <Copyright>jerrylai@aliyun.com</Copyright>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
@@ -31,7 +31,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="RabbitMQ.Client" Version="6.6.0" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
   </ItemGroup>
   <ItemGroup>
     <None Update="MQ.Config.xml">

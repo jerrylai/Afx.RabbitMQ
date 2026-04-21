@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <Description>Afx.RabbitMQ for .NET Standard 2.0</Description>
-    <PackageReleaseNotes>Afx.RabbitMQ for .NET Standard 2.0</PackageReleaseNotes>
-    <Version>3.8.1</Version>
+    <TargetFramework>net8.0</TargetFramework>
+    <Description>Afx.RabbitMQ for .NET 8.0</Description>
+    <PackageReleaseNotes>Afx.RabbitMQ for .NET 8.0</PackageReleaseNotes>
+    <Version>3.9.0</Version>
     <Copyright>jerrylai@aliyun.com</Copyright>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
@@ -31,14 +31,11 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="RabbitMQ.Client" Version="6.6.0" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
   </ItemGroup>
   <ItemGroup>
     <None Update="MQ.Config.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Interfaces\" />
   </ItemGroup>
 </Project>

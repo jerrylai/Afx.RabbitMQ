@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>Afx.RabbitMQ</id>
-    <version>3.8.1</version>
+    <version>3.9.0</version>
     <authors>jerrylai</authors>
     <owners>jerrylai</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
@@ -11,20 +11,11 @@
     <copyright>jerrylai@aliyun.com</copyright>
     <tags>RabbitMQ</tags>
     <dependencies>
-      <group targetFramework=".NETFramework4.6.1">
-        <dependency id="RabbitMQ.Client" version="6.4.0" />
-        <dependency id="System.Buffers" version="4.5.1" />
-        <dependency id="System.Memory" version="4.5.5" />
-        <dependency id="System.Numerics.Vectors" version="4.5.0" />
-        <dependency id="System.Runtime.CompilerServices.Unsafe" version="6.0.0" />
-        <dependency id="System.Threading.Channels" version="6.0.0" />
-        <dependency id="System.Threading.Tasks.Extensions" version="4.5.4" />
-      </group>
-      <group targetFramework=".NETStandard2.0">
-        <dependency id="RabbitMQ.Client" version="6.6.0" />
-      </group>
       <group targetFramework="net6.0">
-        <dependency id="RabbitMQ.Client" version="6.6.0" />
+        <dependency id="RabbitMQ.Client" version="7.2.1" />
+      </group>
+      <group targetFramework="net8.0">
+        <dependency id="RabbitMQ.Client" version="7.2.1" />
       </group>
     </dependencies>
   </metadata>
