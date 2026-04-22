@@ -3,7 +3,6 @@ using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Net.Mime;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -25,7 +24,7 @@ namespace Afx.RabbitMQ
 
         private readonly int maxPool = 3;
         private ConcurrentQueue<IChannel> publishChannelQueue = new ConcurrentQueue<IChannel>();
-      
+
 
         /// <summary>
         /// Returns true if the connection is still in a state where it can be used. Identical
@@ -35,7 +34,7 @@ namespace Afx.RabbitMQ
         /// <summary>
         /// The current heartbeat setting for this connection (System.TimeSpan.Zero for disabled).
         /// </summary>
-        public TimeSpan Heartbeat { get { return  this.connection?.Heartbeat ?? TimeSpan.Zero; } }
+        public TimeSpan Heartbeat { get { return this.connection?.Heartbeat ?? TimeSpan.Zero; } }
 
         /// <summary>
         /// 异常回调
@@ -54,8 +53,7 @@ namespace Afx.RabbitMQ
         /// <param name="maxPool">push池大小</param>
         /// <param name="networkRecoveryInterval"></param>
         /// <param name="clientName"></param>
-        /// <param name="consumersAsync">async 消费</param>
-        public MQPool(string hostName, int port, string userName, string password, IJsonSerialize jsonSerialize, string virtualHost = "/", int maxPool = 3, int networkRecoveryInterval = 15, string clientName = null, bool consumersAsync = true)
+        public MQPool(string hostName, int port, string userName, string password, IJsonSerialize jsonSerialize, string virtualHost = "/", int maxPool = 3, int networkRecoveryInterval = 15, string clientName = null)
         {
             if (string.IsNullOrEmpty(hostName)) throw new ArgumentNullException(nameof(virtualHost));
             if (port <= System.Net.IPEndPoint.MinPort || System.Net.IPEndPoint.MaxPort <= port) throw new ArgumentException(nameof(port));
@@ -95,7 +93,7 @@ namespace Afx.RabbitMQ
         private async Task conCallbackException(object sender, CallbackExceptionEventArgs e)
         {
             if (CallbackException != null)
-               await CallbackException(e.Exception, e.Detail, string.Empty);
+                await CallbackException(e.Exception, e.Detail, string.Empty);
         }
 
         private async Task<PublishChannel> GetPublishChannel()
@@ -128,9 +126,9 @@ namespace Afx.RabbitMQ
         {
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (string.IsNullOrEmpty(type)) throw new ArgumentNullException(nameof(type));
-           await using (var ph = await GetPublishChannel())
+            await using (var ph = await GetPublishChannel())
             {
-               await ph.Channel.ExchangeDeclareAsync(exchange, type, durable, autoDelete, arguments);
+                await ph.Channel.ExchangeDeclareAsync(exchange, type, durable, autoDelete, arguments);
             }
         }
 
@@ -161,7 +159,7 @@ namespace Afx.RabbitMQ
             {
                 foreach (var item in configs)
                 {
-                   await  ph.Channel.ExchangeDeclareAsync(item.Exchange, item.Type, item.Durable, item.AutoDelete, item.Arguments);
+                    await ph.Channel.ExchangeDeclareAsync(item.Exchange, item.Type, item.Durable, item.AutoDelete, item.Arguments);
                 }
             }
         }
@@ -175,11 +173,11 @@ namespace Afx.RabbitMQ
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (string.IsNullOrEmpty(config.Queue)) throw new ArgumentNullException(nameof(config.Queue));
             if (string.IsNullOrEmpty(config.Exchange)) throw new ArgumentNullException(nameof(config.Exchange));
-           await using (var ph = await GetPublishChannel())
+            await using (var ph = await GetPublishChannel())
             {
                 await ph.Channel.QueueDeclareAsync(config.Queue, config.Durable, config.Exclusive, config.AutoDelete, config.QueueArguments);
                 await ph.Channel.QueueBindAsync(config.Queue, config.Exchange, config.RoutingKey ?? string.Empty, config.BindArguments);
-                if(!string.IsNullOrEmpty(config.DelayQueue) && config.Queue != config.DelayQueue 
+                if (!string.IsNullOrEmpty(config.DelayQueue) && config.Queue != config.DelayQueue
                     && (config.RoutingKey != config.DelayRoutingKey || (string.IsNullOrEmpty(config.DelayRoutingKey) && string.IsNullOrEmpty(config.RoutingKey))))
                 {
                     Dictionary<string, object> dic = new Dictionary<string, object>(2);
@@ -277,14 +275,14 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(exchange)) throw new ArgumentNullException(nameof(exchange));
             if (expire.HasValue && expire.Value.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(expire)}({expire}) is error!");
             var body = Serialize<T>(msg, out var contentType);
-           await using (var ph = await GetPublishChannel())
+            await using (var ph = await GetPublishChannel())
             {
                 var props = new BasicProperties();
                 props.Persistent = persistent;
                 props.ContentType = contentType;
                 props.ContentEncoding = "utf-8";
                 if (expire.HasValue) props.Expiration = expire.Value.TotalMilliseconds.ToString("f0");
-                if(headers != null) foreach(KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
+                if (headers != null) foreach (KeyValuePair<string, object> kv in headers) props.Headers[kv.Key] = kv.Value;
                 await ph.Channel.BasicPublishAsync(exchange, routingKey ?? string.Empty, mandatory, props, body);
             }
 
@@ -302,7 +300,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns></returns>
-        public virtual async Task<bool> Publish<T>(T msg, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
+        public virtual async Task<bool> Publish<T>(T msg, PubConfig config, TimeSpan? expire = null, bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -321,7 +319,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual async Task<bool> Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false, 
+        public virtual async Task<bool> Publish<T>(List<T> msgs, string routingKey, TimeSpan? expire = null, string exchange = "amq.direct", bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
@@ -357,7 +355,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns></returns>
-        public virtual async Task<bool> Publish<T>(List<T> msgs, PubConfig config, TimeSpan? expire = null, bool persistent = false, 
+        public virtual async Task<bool> Publish<T>(List<T> msgs, PubConfig config, TimeSpan? expire = null, bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -376,7 +374,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual async Task<bool> PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+        public virtual async Task<bool> PublishDelay<T>(T msg, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (delay.TotalMilliseconds < 1) throw new ArgumentException($"{nameof(delay)} is error!");
@@ -395,7 +393,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual async Task<bool> PublishDelay<T>(T msg, PubConfig config, TimeSpan delay, bool persistent = false, 
+        public virtual async Task<bool> PublishDelay<T>(T msg, PubConfig config, TimeSpan delay, bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -415,7 +413,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual async Task<bool> PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false, 
+        public virtual async Task<bool> PublishDelay<T>(List<T> msgs, string delayRoutingKey, TimeSpan delay, string exchange = "amq.direct", bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
@@ -436,7 +434,7 @@ namespace Afx.RabbitMQ
         /// <param name="headers">headers</param>
         /// <param name="mandatory">如果设置为 true，表示消息必须成功路由到一个队列，否则会将消息退回给生产者。</param>
         /// <returns>是否发生成功</returns>
-        public virtual async Task<bool> PublishDelay<T>(List<T> msgs, PubConfig config, TimeSpan delay, bool persistent = false, 
+        public virtual async Task<bool> PublishDelay<T>(List<T> msgs, PubConfig config, TimeSpan delay, bool persistent = false,
             IDictionary<string, object> headers = null, bool mandatory = false)
         {
             if (msgs == null) throw new ArgumentNullException(nameof(msgs));
@@ -453,7 +451,7 @@ namespace Afx.RabbitMQ
         {
             T result = default(T);
             var t = typeof(T);
-            if (buffer is  T)
+            if (buffer is T)
             {
                 object o = buffer;
                 result = (T)o;
@@ -499,7 +497,7 @@ namespace Afx.RabbitMQ
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
             if (this.subChannel == null)
             {
-                if(this.connection == null) await this.Open();
+                if (this.connection == null) await this.Open();
                 this.subChannel = await this.connection.CreateChannelAsync();
             }
             await subChannel.BasicQosAsync(0, 1, false);
@@ -591,7 +589,7 @@ namespace Afx.RabbitMQ
             }
         }
 
-        class ConsumerBase: IAsyncDisposable
+        class ConsumerBase : IAsyncDisposable
         {
             protected MQPool pool;
 
@@ -664,7 +662,7 @@ namespace Afx.RabbitMQ
                 {
                     if (handerOk)
                     {
-                       await consumer.Channel.BasicAckAsync(e.DeliveryTag, false);
+                        await consumer.Channel.BasicAckAsync(e.DeliveryTag, false);
                     }
                     else
                     {
